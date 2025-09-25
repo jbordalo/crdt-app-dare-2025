@@ -5,28 +5,33 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.google.common.hash.Hashing;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
+import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaLWWSet;
+import pt.unl.fct.di.novasys.babel.crdts.utils.ReplicaID;
+import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
+import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.StringType;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.protocols.dissemination.notifications.BroadcastDelivery;
 import pt.unl.fct.di.novasys.babel.protocols.dissemination.requests.BroadcastRequest;
 import pt.unl.fct.di.novasys.babel.protocols.membership.Peer;
-import pt.unl.fct.di.novasys.babel.crdts.state.implementations.StateLWWSet;
-import pt.unl.fct.di.novasys.babel.crdts.utils.ReplicaID;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.command.Command;
 import tardis.app.data.Card;
 import tardis.app.timers.AppWorkloadGenerateTimer;
+import tardis.app.timers.BroadcastStateTimer;
 
 public class CRDTApp extends GenericProtocol {
 
@@ -38,7 +43,6 @@ public class CRDTApp extends GenericProtocol {
 	public final static String PAR_WORKLOAD_PERIOD = "app.workload.period";
 	public final static String PAR_WORKLOAD_SIZE = "app.workload.payload";
 	public final static String PAR_GENERATE_WORKLOAD = "app.workload.on";
-
 
 	public final static long DEFAULT_WORKLOAD_PERIOD = 10 * 1000; // 10 seconds
 	public final static int DEFAULT_WORKLOAD_SIZE = 63000;
@@ -57,14 +61,13 @@ public class CRDTApp extends GenericProtocol {
 	public final static int DEFAULT_MANAGEMENT_PORT = Command.DEFAULT_MANAGE_PORT;
 
 	private long workloadPeriod;
-	private int payloadSize;
 	private double generateMessageProbability;
 
 	private short bcastProtoID;
 
 	private final Host myself;
 
-	private Logger logger = LogManager.getLogger(DataDisseminationApp.class);
+	private Logger logger = LogManager.getLogger(CRDTApp.class);
 
 	private AtomicBoolean executing;
 
@@ -72,22 +75,26 @@ public class CRDTApp extends GenericProtocol {
 
 	private Thread managementThread;
 
-	private StateLWWSet crdt;
+	private DeltaLWWSet crdt;
+	private ArrayList<StringType> localLog;
 
 	public CRDTApp(Host myself) throws HandlerRegistrationException {
-		super(DataDisseminationApp.PROTO_NAME, DataDisseminationApp.PROTO_ID);
+		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
 
 		this.myself = myself;
 		Peer peer = new Peer(myself.getAddress(), myself.getPort());
-		this.crdt = new StateLWWSet(new ReplicaID(peer));
+		this.crdt = new DeltaLWWSet(new ReplicaID(peer));
+
+		this.localLog = new ArrayList<>();
 
 		try {
-			this.nodeLabel = myself.getAddress().getHostName().split("\\.")[3];
+			this.nodeLabel = myself.getAddress().getHostName().split(".")[3];
 		} catch (Exception e) {
 			this.nodeLabel = myself.getAddress().getHostName();
 		}
 
 		registerTimerHandler(AppWorkloadGenerateTimer.PROTO_ID, this::handleAppWorkloadGenerateTimer);
+		registerTimerHandler(BroadcastStateTimer.PROTO_ID, this::handleBroadcastStateTimer);
 		subscribeNotification(BroadcastDelivery.NOTIFICATION_ID, this::handleMessageDeliveryEvent);
 	}
 
@@ -110,20 +117,17 @@ public class CRDTApp extends GenericProtocol {
 			else
 				this.workloadPeriod = DEFAULT_WORKLOAD_PERIOD;
 
-			if (props.containsKey(PAR_WORKLOAD_SIZE))
-				this.payloadSize = Integer.parseInt(props.getProperty(PAR_WORKLOAD_SIZE));
-			else
-				this.payloadSize = DEFAULT_WORKLOAD_SIZE;
-
 			if (props.containsKey(PAR_WORKLOAD_PROBABILITY))
 				this.generateMessageProbability = Double.parseDouble(props.getProperty(PAR_WORKLOAD_PROBABILITY));
 			else
 				this.generateMessageProbability = DEFAULT_WORKLOAD_PROBABILITY;
 
 			setupPeriodicTimer(new AppWorkloadGenerateTimer(), this.workloadPeriod, this.workloadPeriod);
-			logger.debug("DataDisseminationApp has workload generation enabled.");
+			logger.debug("CRDTApp has workload generation enabled.");
 		} else
-			logger.debug("DataDisseminationApp has workload generation disabled.");
+			logger.debug("CRDTApp has workload generation disabled.");
+
+		setupPeriodicTimer(new BroadcastStateTimer(), this.workloadPeriod * 5, this.workloadPeriod * 5);
 
 		boolean b = DEFAULT_BCAST_INIT_ENABLED;
 
@@ -135,7 +139,8 @@ public class CRDTApp extends GenericProtocol {
 
 		// If app.management is present but set to false, don't start the management
 		// thread
-		if (props.containsKey(PAR_MANAGEMENT_THREAD) && !Boolean.parseBoolean(props.getProperty(PAR_MANAGEMENT_THREAD))) {
+		if (props.containsKey(PAR_MANAGEMENT_THREAD)
+				&& !Boolean.parseBoolean(props.getProperty(PAR_MANAGEMENT_THREAD))) {
 			return;
 		}
 
@@ -235,65 +240,71 @@ public class CRDTApp extends GenericProtocol {
 			return;
 
 		if (this.generateMessageProbability < 1.0 && new Random().nextDouble() > this.generateMessageProbability)
-			return; // We have conditioned probability to generate message
+			return; // We have a probabibility for doing an action
 
 		// 80% chance of buying, 20% of selling, so the state keeps growing steadily
 		// That said, removing still grows state :)
 		if (new Random().nextDouble() > 0.8) {
 			// SELL
+			if (localLog.size() == 0) {
+				return;
+			}
 
+			int randomSell = ThreadLocalRandom.current().nextInt(localLog.size());
+			StringType sold = this.localLog.get(randomSell);
+			DeltaLWWSet delta = crdt.remove(sold);
+			Iterator<SerializableType> it = delta.iterator();
+			if (it.hasNext()) {
+				localLog.remove((StringType) it.next());
+				logger.info("Sold card {}", sold);
+			}
 		} else {
 			// BUY
-			Card card = Card.randomCard();
-			this.crdt.add(card);
+			StringType card = new StringType(Card.randomCard().toString());
+			DeltaLWWSet delta = this.crdt.add(card);
+			Iterator<SerializableType> it = delta.iterator();
+			if (it.hasNext()) {
+				localLog.add((StringType) it.next());
+				logger.info("Bought card {}", card);
+			}
+
+		}
+		logger.debug("CRDTApp generating a card.");
+	}
+
+	private void handleBroadcastStateTimer(BroadcastStateTimer t, long time) {
+		ByteBuf in = Unpooled.buffer();
+		;
+		try {
+			this.crdt.serialize(in);
+		} catch (IOException e) {
+			logger.error("Failed to serialize CRDT");
+			e.printStackTrace();
 		}
 
-		logger.debug("CRDTApp generating a card.");
+		BroadcastRequest request = new BroadcastRequest(myself, in.array(), PROTO_ID);
+		sendRequest(request, bcastProtoID);
 	}
 
 	// Handle new message received with CRDT
 	private void handleMessageDeliveryEvent(BroadcastDelivery msg, short proto) {
-		UserMessage um = null;
+		DeltaLWWSet state;
 
-		
 		try {
-			um = UserMessage.fromByteArray(msg.getPayload());
+			ByteBuf in = Unpooled.wrappedBuffer(msg.getPayload());
+			state = DeltaLWWSet.serializer.deserialize(in);
+			this.crdt.mergeDelta(state);
+
+			this.localLog.clear();
+			Iterator<SerializableType> it = this.crdt.iterator();
+			while (it.hasNext()) {
+				this.localLog.add((StringType) it.next());
+			}
 		} catch (Exception e) {
 			// Purposefully not dealing with the exception
 			// Assuming it means the message was not for me
 			return;
 		}
-		// this.crdt.add();
-
-		if (um.hasAttachment()) {
-			logger.debug("Delivered a message with attachment");
-
-			String readable = readableOutput(um.getMessage(), um.getAttachmentName());
-
-			logger.info(myself + " recv message: [" + msg.getSender() + "::::" + readable + "]");
-		} else {
-			logger.debug("Delivered a message");
-			logger.info(myself + " recv message: [" + msg.getSender() + "::::" + readableOutput(um.getMessage()) + "]");
-		}
-	}
-
-	public static String randomCapitalLetters(int length) {
-		int leftLimit = 65; // letter 'A'
-		int rightLimit = 90; // letter 'Z'
-		Random random = new Random();
-		return random.ints(leftLimit, rightLimit + 1).limit(length)
-				.collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
-	}
-
-	public static String readableOutput(String msg, String attachName) {
-		return Hashing.sha256().hashString(msg + "::" + attachName, StandardCharsets.UTF_8).toString();
-	}
-
-	public static String readableOutput(String msg) {
-		if (msg.length() > 32) {
-			return Hashing.sha256().hashString(msg, StandardCharsets.UTF_8).toString();
-		} else
-			return msg;
 	}
 
 	/**

@@ -6,8 +6,8 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>pt.unl.fct.di.novasys.tardis</groupId>
-	<artifactId>tardis-simple-usecase-emu-gym-ml</artifactId>
-	<version>0.0.3</version>
+	<artifactId>crdt-dare-project</artifactId>
+	<version>0.0.1</version>
 
 	<dependencies>
 		<dependency>
@@ -27,16 +27,6 @@
 			<version>[0.0.7,)</version>
 		</dependency>
 		<dependency>
-			<groupId>pt.unl.fct.di.novasys.babel.utils</groupId>
-			<artifactId>visualization-protocol</artifactId>
-			<version>[0.1.0,)</version>
-		</dependency>
-		<dependency>
-			<groupId>pt.unl.fct.di.novasys.babel.utils</groupId>
-			<artifactId>reconfiguration-protocol-monitor-j21</artifactId>
-			<version>[0.1.1,)</version>
-		</dependency>
-		<dependency>
 			<groupId>pt.unl.fct.di.novasys.babel</groupId>
 			<artifactId>babel-protocol-adaptive-eagerpushgossip</artifactId>
 			<version>[0.3.0,)</version>
@@ -50,11 +40,6 @@
 			<groupId>pt.unl.fct.di.novasys.babel</groupId>
 			<artifactId>babel-protocol-autonomic-hyparview</artifactId>
 			<version>[0.1.10,)</version>
-		</dependency>
-		<dependency>
-			<groupId>org.zeromq</groupId>
-			<artifactId>jeromq</artifactId>
-			<version>0.5.2</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>

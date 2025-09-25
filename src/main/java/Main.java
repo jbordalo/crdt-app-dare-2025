@@ -13,7 +13,7 @@ import pt.unl.fct.di.novasys.babel.utils.NetworkingUtilities;
 import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
 import pt.unl.fct.di.novasys.babel.utils.recordexporter.RecordExporter;
 import pt.unl.fct.di.novasys.network.data.Host;
-import tardis.app.DataDisseminationApp;
+import tardis.app.CRDTApp;
 
 public class Main {
 
@@ -31,9 +31,9 @@ public class Main {
 	private static final String DEFAULT_CONF = "tardis.conf";
 
 	@SuppressWarnings("unused")
-	private final DataDisseminationApp app;
+	private final CRDTApp app;
 
-	public Main(DataDisseminationApp app) {
+	public Main(CRDTApp app) {
 		this.app = app;
 	}
 
@@ -75,30 +75,30 @@ public class Main {
 
 		HyParView membershipProtocol = new HyParView("channel.hyparview", props, h);
 
-		MembershipMonitor mm = new MembershipMonitor();
+		MembershipMonitor mm = null; // new MembershipMonitor();
 
 		Host gossipHost = new Host(h.getAddress(), h.getPort() + 1);
 		AdaptiveEagerPushGossipBroadcast bcast = new AdaptiveEagerPushGossipBroadcast("channel.gossip", props,
 				gossipHost);
 
-		DataDisseminationApp app = new DataDisseminationApp(gossipHost);
+		CRDTApp app = new CRDTApp(gossipHost);
 
 		if (!props.containsKey("Metrics.monitor.address") || !props.containsKey("Metrics.monitor.port")) {
 			System.out.println("Missing monitor configuration");
 			System.exit(1);
 		}
 
-		InetAddress monitorAddress = InetAddress.getByName(props.getProperty("Metrics.monitor.address"));
-		int monitorPort = Integer.parseInt(props.getProperty("Metrics.monitor.port"));
+		// InetAddress monitorAddress = InetAddress.getByName(props.getProperty("Metrics.monitor.address"));
+		// int monitorPort = Integer.parseInt(props.getProperty("Metrics.monitor.port"));
 
-		Host monitorHost = new Host(monitorAddress, monitorPort);
+		// Host monitorHost = new Host(monitorAddress, monitorPort);
 
-		Host recordExporterHost = new Host(h.getAddress(), h.getPort() + 22);
-		RecordExporter recordExporter = new RecordExporter(recordExporterHost, monitorHost);
+		// Host recordExporterHost = new Host(h.getAddress(), h.getPort() + 22);
+		RecordExporter recordExporter = null; // new RecordExporter(recordExporterHost, monitorHost);
 
 		// Solve the dependency between the data dissemination app and the broadcast
 		// protocol if omitted from the config
-		props.putIfAbsent(DataDisseminationApp.PAR_BCAST_PROTOCOL_ID,
+		props.putIfAbsent(CRDTApp.PAR_BCAST_PROTOCOL_ID,
 		AdaptiveEagerPushGossipBroadcast.PROTOCOL_ID + "");
 
 		GenericProtocol[] protocols = { membershipProtocol, mm, bcast, recordExporter, app };
