@@ -32,28 +32,9 @@
 	</Appenders>
 
 	<Loggers>
-		<Logger name="tardis.app" level="info" additivity="true">
+		<Logger name="tardis.app" level="debug" additivity="true">
 			<AppenderRef ref="msglog" />
 		</Logger>
-		<Logger name="tardis.management" level="debug"
-			additivity="true">
-			<AppenderRef ref="controller" />
-		</Logger>
-		<Logger name="pt.unl.fct.di.novasys.babel.utils.memebership.monitor.AdaptiveReconfigurationMonitor" level="info"
-			additivity="true">
-			<AppenderRef ref="autonomic" />
-		</Logger>
-		<Logger
-			name="pt.unl.fct.di.novasys.babel.core.protocols.discovery"
-			level="error" additivity="false">
-			<AppenderRef ref="console" />
-		</Logger>
-		<!-- 		
-		<Logger name="pt.unl.fct.di.novasys.channel" level="trace" 
-			additivity="true"> 
-			<AppenderRef ref="channels" /> 
-		</Logger>
-		 -->
 		<Logger name="pt.unl.fct.di.novasys.babel.protocols.eagerpush"
 			level="info" additivity="false">
 			<AppenderRef ref="console" />

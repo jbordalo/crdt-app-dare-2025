@@ -102,7 +102,7 @@ public class CRDTApp extends GenericProtocol {
 	public void init(Properties props) throws HandlerRegistrationException, IOException {
 		if (props.containsKey(PAR_BCAST_PROTOCOL_ID)) {
 			this.bcastProtoID = Short.parseShort(props.getProperty(PAR_BCAST_PROTOCOL_ID));
-			logger.debug("DataDisseminationApp is configured to used broadcast protocol with id: " + this.bcastProtoID);
+			logger.debug("CRDTApp is configured to use broadcast protocol with id: " + this.bcastProtoID);
 		} else {
 			logger.error("The application requires the id of the broadcast protocol being used. Parameter: '"
 					+ PAR_BCAST_PROTOCOL_ID + "'");
@@ -267,22 +267,28 @@ public class CRDTApp extends GenericProtocol {
 				localLog.add((StringType) it.next());
 				logger.info("Bought card {}", card);
 			}
-
 		}
 		logger.debug("CRDTApp generating a card.");
 	}
 
 	private void handleBroadcastStateTimer(BroadcastStateTimer t, long time) {
 		ByteBuf in = Unpooled.buffer();
-		;
+
 		try {
+			// Send my state
 			this.crdt.serialize(in);
 		} catch (IOException e) {
 			logger.error("Failed to serialize CRDT");
 			e.printStackTrace();
 		}
 
-		BroadcastRequest request = new BroadcastRequest(myself, in.array(), PROTO_ID);
+		int stateSize = in.writerIndex();
+		logger.debug("Sending state of size {}", stateSize);
+
+		byte[] payload = new byte[stateSize];
+		in.getBytes(0, payload);
+
+		BroadcastRequest request = new BroadcastRequest(myself, payload, PROTO_ID);
 		sendRequest(request, bcastProtoID);
 	}
 
@@ -292,8 +298,14 @@ public class CRDTApp extends GenericProtocol {
 
 		try {
 			ByteBuf in = Unpooled.wrappedBuffer(msg.getPayload());
+
+			long start = System.nanoTime();
 			state = DeltaLWWSet.serializer.deserialize(in);
 			this.crdt.mergeDelta(state);
+			long end = System.nanoTime();
+			long elapsedMicros = (end - start) / 1_000;
+
+			logger.debug("Spent {} deserializing and merging state", elapsedMicros);
 
 			this.localLog.clear();
 			Iterator<SerializableType> it = this.crdt.iterator();
@@ -301,9 +313,8 @@ public class CRDTApp extends GenericProtocol {
 				this.localLog.add((StringType) it.next());
 			}
 		} catch (Exception e) {
-			// Purposefully not dealing with the exception
-			// Assuming it means the message was not for me
-			return;
+			logger.error(e);
+			System.err.println(e);
 		}
 	}
 

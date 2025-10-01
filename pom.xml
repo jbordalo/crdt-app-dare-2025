@@ -13,7 +13,7 @@
 		<dependency>
 			<groupId>pt.unl.fct.di.novasys.babel</groupId>
 			<artifactId>babel-crdts</artifactId>
-			<version>[0.0.10,)</version>
+			<version>[0.1.2]</version>
 		</dependency>
 
 		<dependency>

@@ -4,7 +4,7 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoTimer;
 
 public class BroadcastStateTimer extends ProtoTimer {
 
-	public final static short PROTO_ID = 9879;
+	public final static short PROTO_ID = 9789;
 	
 	public BroadcastStateTimer() {
 		super(PROTO_ID);
