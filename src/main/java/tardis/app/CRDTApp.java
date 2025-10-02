@@ -24,6 +24,9 @@ import pt.unl.fct.di.novasys.babel.crdts.utils.ReplicaID;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.StringType;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
+import pt.unl.fct.di.novasys.babel.metrics.Metric.Unit;
+import pt.unl.fct.di.novasys.babel.metrics.StatsGauge;
+import pt.unl.fct.di.novasys.babel.metrics.StatsGauge.StatType;
 import pt.unl.fct.di.novasys.babel.protocols.dissemination.notifications.BroadcastDelivery;
 import pt.unl.fct.di.novasys.babel.protocols.dissemination.requests.BroadcastRequest;
 import pt.unl.fct.di.novasys.babel.protocols.membership.Peer;
@@ -37,6 +40,9 @@ public class CRDTApp extends GenericProtocol {
 
 	public final static String PROTO_NAME = "CRDT Mock Application";
 	public final static short PROTO_ID = 9898;
+
+	public final static String STATE_SIZE_METRIC = "averageStateSize";
+	public final static String TIME_MERGING_METRIC = "averageTimeMerging";
 
 	private boolean generateWorkload;
 
@@ -77,6 +83,8 @@ public class CRDTApp extends GenericProtocol {
 
 	private DeltaLWWSet crdt;
 	private ArrayList<StringType> localLog;
+	private StatsGauge averageTimeMerging;
+	private StatsGauge averageStateSize;
 
 	public CRDTApp(Host myself) throws HandlerRegistrationException {
 		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
@@ -92,6 +100,11 @@ public class CRDTApp extends GenericProtocol {
 		} catch (Exception e) {
 			this.nodeLabel = myself.getAddress().getHostName();
 		}
+
+		this.averageStateSize = registerMetric(
+				new StatsGauge.Builder(CRDTApp.STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG).build());
+		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTApp.TIME_MERGING_METRIC, "ms")
+				.statTypes(StatType.AVG, StatType.MAX).build());
 
 		registerTimerHandler(AppWorkloadGenerateTimer.PROTO_ID, this::handleAppWorkloadGenerateTimer);
 		registerTimerHandler(BroadcastStateTimer.PROTO_ID, this::handleBroadcastStateTimer);
@@ -284,6 +297,7 @@ public class CRDTApp extends GenericProtocol {
 
 		int stateSize = in.writerIndex();
 		logger.debug("Sending state of size {}", stateSize);
+		this.averageStateSize.observe(stateSize);
 
 		byte[] payload = new byte[stateSize];
 		in.getBytes(0, payload);
@@ -299,13 +313,20 @@ public class CRDTApp extends GenericProtocol {
 		try {
 			ByteBuf in = Unpooled.wrappedBuffer(msg.getPayload());
 
-			long start = System.nanoTime();
+			long startDeserialize = System.nanoTime();
 			state = DeltaLWWSet.serializer.deserialize(in);
-			this.crdt.mergeDelta(state);
-			long end = System.nanoTime();
-			long elapsedMicros = (end - start) / 1_000;
+			long endDeserialize = System.nanoTime();
 
-			logger.debug("Spent {} deserializing and merging state", elapsedMicros);
+			long startMerge = System.nanoTime();
+			this.averageTimeMerging.startTimedEvent("merge");
+			this.crdt.mergeDelta(state);
+			this.averageTimeMerging.stopTimedEvent("merge");
+			long endMerge = System.nanoTime();
+
+			long deserializationMicros = (endDeserialize - startDeserialize) / 1_000;
+			long mergeMicros = (endMerge - startMerge) / 1_000;
+
+			logger.debug("Deserialization took {} µs, merge took {} µs", deserializationMicros, mergeMicros);
 
 			this.localLog.clear();
 			Iterator<SerializableType> it = this.crdt.iterator();

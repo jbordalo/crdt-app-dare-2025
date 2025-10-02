@@ -10,16 +10,16 @@
 	<version>0.0.1</version>
 
 	<dependencies>
-		<dependency>
-			<groupId>pt.unl.fct.di.novasys.babel</groupId>
-			<artifactId>babel-crdts</artifactId>
-			<version>[0.1.2]</version>
-		</dependency>
 
 		<dependency>
 			<groupId>pt.unl.fct.di.novasys.babel</groupId>
 			<artifactId>babel-sc-core</artifactId>
-			<version>[0.5.0,)</version>
+			<version>[0.8.0,)</version>
+		</dependency>
+		<dependency>
+			<groupId>pt.unl.fct.di.novasys.babel</groupId>
+			<artifactId>babel-crdts</artifactId>
+			<version>[0.1.2,)</version>
 		</dependency>
 		<dependency>
 			<groupId>pt.unl.fct.di.novasys.babel.utils</groupId>

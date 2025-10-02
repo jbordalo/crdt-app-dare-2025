@@ -7,16 +7,21 @@ import org.apache.logging.log4j.Logger;
 
 import pt.unl.fct.di.novasys.babel.core.Babel;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
+import pt.unl.fct.di.novasys.babel.metrics.exporters.CollectOptions;
+import pt.unl.fct.di.novasys.babel.metrics.exporters.ExporterCollectOptions;
+import pt.unl.fct.di.novasys.babel.metrics.exporters.MonitorExporter;
+import pt.unl.fct.di.novasys.babel.metrics.formatting.JSONFormatter;
+import pt.unl.fct.di.novasys.babel.metrics.monitor.SimpleMonitor;
+import pt.unl.fct.di.novasys.babel.metrics.monitor.aggregation.DefaultAggregation;
+import pt.unl.fct.di.novasys.babel.metrics.monitor.datalayer.LocalTextStorage;
 import pt.unl.fct.di.novasys.babel.protocols.eagerpush.AdaptiveEagerPushGossipBroadcast;
 import pt.unl.fct.di.novasys.babel.protocols.hyparview.HyParView;
 import pt.unl.fct.di.novasys.babel.utils.NetworkingUtilities;
 import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
-import pt.unl.fct.di.novasys.babel.utils.recordexporter.RecordExporter;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
 
 public class Main {
-
 	// Sets the log4j (logging library) configuration file
 	static {
 		System.setProperty("log4j.configurationFile", "log4j2.xml");
@@ -71,7 +76,30 @@ public class Main {
 
 		h = new Host(InetAddress.getByName(address), port);
 
-		System.out.println("local host is set to: " + h);
+		InetAddress monitorAddress = InetAddress.getByName(props.getProperty("Metrics.monitor.address"));
+		int monitorPort = Integer.parseInt(props.getProperty("Metrics.monitor.port"));
+
+		Host monitorHost = new Host(monitorAddress, monitorPort);
+
+		SimpleMonitor mon = null;
+		if (h.getAddress().equals(monitorHost.getAddress())) {
+			// I'm the monitor
+			logger.info("{} acting as monitor.", h.getAddress());
+			mon = new SimpleMonitor(monitorHost,
+					new LocalTextStorage.Builder().setFormatter(new JSONFormatter()).build());
+			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_METRIC));
+			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC));
+		}
+
+		Host exporterHost = new Host(h.getAddress(), h.getPort() + 2);
+
+		MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost, 60000,
+				ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID)
+						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_METRIC, new CollectOptions(true))
+						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new CollectOptions(true))
+						.build());
+
+		System.out.println("localhost is set to: " + h);
 
 		HyParView membershipProtocol = new HyParView("channel.hyparview", props, h);
 
@@ -88,35 +116,30 @@ public class Main {
 			System.exit(1);
 		}
 
-		// InetAddress monitorAddress = InetAddress.getByName(props.getProperty("Metrics.monitor.address"));
-		// int monitorPort = Integer.parseInt(props.getProperty("Metrics.monitor.port"));
-
-		// Host monitorHost = new Host(monitorAddress, monitorPort);
-
-		// Host recordExporterHost = new Host(h.getAddress(), h.getPort() + 22);
-		RecordExporter recordExporter = null; // new RecordExporter(recordExporterHost, monitorHost);
-
 		// Solve the dependency between the data dissemination app and the broadcast
 		// protocol if omitted from the config
 		props.putIfAbsent(CRDTApp.PAR_BCAST_PROTOCOL_ID,
-		AdaptiveEagerPushGossipBroadcast.PROTOCOL_ID + "");
+				AdaptiveEagerPushGossipBroadcast.PROTOCOL_ID + "");
 
-		GenericProtocol[] protocols = { membershipProtocol, mm, bcast, recordExporter, app };
+		GenericProtocol[] protocols = { membershipProtocol, mm, bcast, app, mon, exporter };
 
 		for (GenericProtocol protocol : protocols) {
-			if (protocol == null) continue;
+			if (protocol == null)
+				continue;
 			babel.registerProtocol(protocol);
 			System.out.printf("Loaded: %s %d%n", protocol.getProtoName(), protocol.getProtoId());
 		}
 
 		for (GenericProtocol protocol : protocols) {
-			if (protocol == null) continue;
+			if (protocol == null)
+				continue;
 			protocol.init(props);
 			System.out.printf("Initialized: %s %d%n", protocol.getProtoName(), protocol.getProtoId());
 		}
 
 		System.out.println("Setup is complete.");
 
+		babel.startMetrics();
 		babel.start();
 		System.out.println("System is running.");
 	}
