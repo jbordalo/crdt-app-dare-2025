@@ -20,6 +20,7 @@ import pt.unl.fct.di.novasys.babel.utils.NetworkingUtilities;
 import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
+import tardis.app.CRDTAppDelta;
 
 public class Main {
 	// Sets the log4j (logging library) configuration file
@@ -94,7 +95,7 @@ public class Main {
 		Host exporterHost = new Host(h.getAddress(), h.getPort() + 2);
 
 		MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost, 60000,
-				ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID)
+				ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID).collectAllMetrics(false)
 						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_METRIC, new CollectOptions(true))
 						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new CollectOptions(true))
 						.build());
@@ -106,10 +107,19 @@ public class Main {
 		MembershipMonitor mm = null; // new MembershipMonitor();
 
 		Host gossipHost = new Host(h.getAddress(), h.getPort() + 1);
-		AdaptiveEagerPushGossipBroadcast bcast = new AdaptiveEagerPushGossipBroadcast("channel.gossip", props,
-				gossipHost);
 
-		CRDTApp app = new CRDTApp(gossipHost);
+		AdaptiveEagerPushGossipBroadcast bcast = null;
+
+		GenericProtocol app;
+
+		switch (props.getProperty("app.type")) {
+			case "delta":
+				app = new CRDTAppDelta(gossipHost);
+				break;
+			default:
+				app = new CRDTApp(gossipHost);
+				bcast = new AdaptiveEagerPushGossipBroadcast("channel.gossip", props, gossipHost);
+		}
 
 		if (!props.containsKey("Metrics.monitor.address") || !props.containsKey("Metrics.monitor.port")) {
 			System.out.println("Missing monitor configuration");
@@ -143,5 +153,4 @@ public class Main {
 		babel.start();
 		System.out.println("System is running.");
 	}
-
 }

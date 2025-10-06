@@ -1,10 +1,6 @@
 package tardis.app.data;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -12,156 +8,159 @@ import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.StringType;
 
 public class Card {
     private static final String[] names = { "Bulbasaur",
-                "Ivysaur",
-                "Venusaur",
-                "Charmander",
-                "Charmeleon",
-                "Charizard",
-                "Squirtle",
-                "Wartortle",
-                "Blastoise",
-                "Caterpie",
-                "Metapod",
-                "Butterfree",
-                "Weedle",
-                "Kakuna",
-                "Beedrill",
-                "Pidgey",
-                "Pidgeotto",
-                "Pidgeot",
-                "Rattata",
-                "Raticate",
-                "Spearow",
-                "Fearow",
-                "Ekans",
-                "Arbok",
-                "Pikachu",
-                "Raichu",
-                "Sandshrew",
-                "Sandslash",
-                "Nidoran♀",
-                "Nidorina",
-                "Nidoqueen",
-                "Nidoran♂",
-                "Nidorino",
-                "Nidoking",
-                "Clefairy",
-                "Clefable",
-                "Vulpix",
-                "Ninetales",
-                "Jigglypuff",
-                "Wigglytuff",
-                "Zubat",
-                "Golbat",
-                "Oddish",
-                "Gloom",
-                "Vileplume",
-                "Paras",
-                "Parasect",
-                "Venonat",
-                "Venomoth",
-                "Diglett",
-                "Dugtrio",
-                "Meowth",
-                "Persian",
-                "Psyduck",
-                "Golduck",
-                "Mankey",
-                "Primeape",
-                "Growlithe",
-                "Arcanine",
-                "Poliwag",
-                "Poliwhirl",
-                "Poliwrath",
-                "Abra",
-                "Kadabra",
-                "Alakazam",
-                "Machop",
-                "Machoke",
-                "Machamp",
-                "Bellsprout",
-                "Weepinbell",
-                "Victreebel",
-                "Tentacool",
-                "Tentacruel",
-                "Geodude",
-                "Graveler",
-                "Golem",
-                "Ponyta",
-                "Rapidash",
-                "Slowpoke",
-                "Slowbro",
-                "Magnemite",
-                "Magneton",
-                "Farfetch'd",
-                "Doduo",
-                "Dodrio",
-                "Seel",
-                "Dewgong",
-                "Grimer",
-                "Muk",
-                "Shellder",
-                "Cloyster",
-                "Gastly",
-                "Haunter",
-                "Gengar",
-                "Onix",
-                "Drowzee",
-                "Hypno",
-                "Krabby",
-                "Kingler",
-                "Voltorb",
-                "Electrode",
-                "Exeggcute",
-                "Exeggutor",
-                "Cubone",
-                "Marowak",
-                "Hitmonlee",
-                "Hitmonchan",
-                "Lickitung",
-                "Koffing",
-                "Weezing",
-                "Rhyhorn",
-                "Rhydon",
-                "Chansey",
-                "Tangela",
-                "Kangaskhan",
-                "Horsea",
-                "Seadra",
-                "Goldeen",
-                "Seaking",
-                "Staryu",
-                "Starmie",
-                "Mr. Mime",
-                "Scyther",
-                "Jynx",
-                "Electabuzz",
-                "Magmar",
-                "Pinsir",
-                "Tauros",
-                "Magikarp",
-                "Gyarados",
-                "Lapras",
-                "Ditto",
-                "Eevee",
-                "Vaporeon",
-                "Jolteon",
-                "Flareon",
-                "Porygon",
-                "Omanyte",
-                "Omastar",
-                "Kabuto",
-                "Kabutops",
-                "Aerodactyl",
-                "Snorlax",
-                "Articuno",
-                "Zapdos",
-                "Moltres",
-                "Dratini",
-                "Dragonair",
-                "Dragonite",
-                "Mewtwo",
-                "Mew" };
+            "Ivysaur",
+            "Venusaur",
+            "Charmander",
+            "Charmeleon",
+            "Charizard",
+            "Squirtle",
+            "Wartortle",
+            "Blastoise",
+            "Caterpie",
+            "Metapod",
+            "Butterfree",
+            "Weedle",
+            "Kakuna",
+            "Beedrill",
+            "Pidgey",
+            "Pidgeotto",
+            "Pidgeot",
+            "Rattata",
+            "Raticate",
+            "Spearow",
+            "Fearow",
+            "Ekans",
+            "Arbok",
+            "Pikachu",
+            "Raichu",
+            "Sandshrew",
+            "Sandslash",
+            "Nidoran♀",
+            "Nidorina",
+            "Nidoqueen",
+            "Nidoran♂",
+            "Nidorino",
+            "Nidoking",
+            "Clefairy",
+            "Clefable",
+            "Vulpix",
+            "Ninetales",
+            "Jigglypuff",
+            "Wigglytuff",
+            "Zubat",
+            "Golbat",
+            "Oddish",
+            "Gloom",
+            "Vileplume",
+            "Paras",
+            "Parasect",
+            "Venonat",
+            "Venomoth",
+            "Diglett",
+            "Dugtrio",
+            "Meowth",
+            "Persian",
+            "Psyduck",
+            "Golduck",
+            "Mankey",
+            "Primeape",
+            "Growlithe",
+            "Arcanine",
+            "Poliwag",
+            "Poliwhirl",
+            "Poliwrath",
+            "Abra",
+            "Kadabra",
+            "Alakazam",
+            "Machop",
+            "Machoke",
+            "Machamp",
+            "Bellsprout",
+            "Weepinbell",
+            "Victreebel",
+            "Tentacool",
+            "Tentacruel",
+            "Geodude",
+            "Graveler",
+            "Golem",
+            "Ponyta",
+            "Rapidash",
+            "Slowpoke",
+            "Slowbro",
+            "Magnemite",
+            "Magneton",
+            "Farfetch'd",
+            "Doduo",
+            "Dodrio",
+            "Seel",
+            "Dewgong",
+            "Grimer",
+            "Muk",
+            "Shellder",
+            "Cloyster",
+            "Gastly",
+            "Haunter",
+            "Gengar",
+            "Onix",
+            "Drowzee",
+            "Hypno",
+            "Krabby",
+            "Kingler",
+            "Voltorb",
+            "Electrode",
+            "Exeggcute",
+            "Exeggutor",
+            "Cubone",
+            "Marowak",
+            "Hitmonlee",
+            "Hitmonchan",
+            "Lickitung",
+            "Koffing",
+            "Weezing",
+            "Rhyhorn",
+            "Rhydon",
+            "Chansey",
+            "Tangela",
+            "Kangaskhan",
+            "Horsea",
+            "Seadra",
+            "Goldeen",
+            "Seaking",
+            "Staryu",
+            "Starmie",
+            "Mr. Mime",
+            "Scyther",
+            "Jynx",
+            "Electabuzz",
+            "Magmar",
+            "Pinsir",
+            "Tauros",
+            "Magikarp",
+            "Gyarados",
+            "Lapras",
+            "Ditto",
+            "Eevee",
+            "Vaporeon",
+            "Jolteon",
+            "Flareon",
+            "Porygon",
+            "Omanyte",
+            "Omastar",
+            "Kabuto",
+            "Kabutops",
+            "Aerodactyl",
+            "Snorlax",
+            "Articuno",
+            "Zapdos",
+            "Moltres",
+            "Dratini",
+            "Dragonair",
+            "Dragonite",
+            "Mewtwo",
+            "Mew" };
+
+    private static final int NORMAL_BASE_SIZE = 1_000_000;
+    private static final int SHINY_MAX_SIZE = 5_000_000;
 
     private final String id;
     private final String name;
@@ -213,7 +212,16 @@ public class Card {
 
     @Override
     public String toString() {
-        return String.format("[%s] %s%s - %s (image %dB)",
+        return String.format("[%s] %s%s - %s [%s]",
+                id,
+                shiny ? "✨ " : "",
+                name,
+                description,
+                Base64.getEncoder().encodeToString(imageData));
+    }
+
+    public String toStringShort() {
+        return String.format("[%s] %s%s - %s (%dB)",
                 id,
                 shiny ? "✨ " : "",
                 name,
@@ -229,49 +237,46 @@ public class Card {
         String description = "Card of " + name;
 
         boolean shiny = rng.nextDouble() < 0.05;
-        int imageSize = shiny ? 1024 : 128;
 
-        // Random unique ID (UUID works, or any string)
+        int imageSize;
+        if (shiny) {
+            imageSize = rng.nextInt(NORMAL_BASE_SIZE, SHINY_MAX_SIZE + 1);
+        } else {
+            int fluctuation = (int) (NORMAL_BASE_SIZE * 0.2);
+            int variation = rng.nextInt(-fluctuation, fluctuation);
+            imageSize = NORMAL_BASE_SIZE + variation;
+        }
+
         String id = UUID.randomUUID().toString();
 
-        return new Card(id, name, description, shiny, imageSize);
+        return new Card(id, name, description, shiny, randomBytes(imageSize));
     }
 
     public static String extractId(StringType elem) {
         return elem.getValue().split(" ")[0];
     }
 
-    public byte[] toBytes() throws IOException {
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                DataOutputStream dos = new DataOutputStream(baos)) {
+    public static String preview(String val) {
+		// Split only first 4 spaces (ID, shiny?, name, description + Base64)
+		String[] parts = val.split(" ", 4);
 
-            dos.writeUTF(this.id);
-            dos.writeUTF(this.name);
-            dos.writeUTF(this.description);
-            dos.writeBoolean(this.shiny);
+		String id = parts[0].replace("[", "").replace("]", "");
+		boolean shiny = parts[1].equals("✨");
+		String name = shiny ? parts[2] : parts[1];
 
-            dos.writeInt(this.imageData.length);
-            dos.write(this.imageData);
+		// Extract Base64 part
+		int b64Start = val.lastIndexOf('[');
+		int b64End = val.lastIndexOf(']');
+		String b64 = "?";
+		if (b64Start >= 0 && b64End > b64Start) {
+			String fullB64 = val.substring(b64Start + 1, b64End);
+			int len = fullB64.length();
+			b64 = fullB64.substring(0, Math.min(8, len)) + "..." + fullB64.substring(Math.max(len - 8, 0));
+		}
 
-            return baos.toByteArray();
-        }
+		return "[" + id.substring(0, Math.min(8, id.length())) + "] "
+				+ (shiny ? "✨ " : "")
+				+ name + " "
+				+ "img[" + b64 + "]";
     }
-
-    public static Card fromBytes(byte[] data) throws IOException {
-        try (ByteArrayInputStream bais = new ByteArrayInputStream(data);
-                DataInputStream dis = new DataInputStream(bais)) {
-
-            String id = dis.readUTF();
-            String name = dis.readUTF();
-            String description = dis.readUTF();
-            boolean shiny = dis.readBoolean();
-
-            int length = dis.readInt();
-            byte[] bytes = new byte[length];
-            dis.readFully(bytes);
-
-            return new Card(id, name, description, shiny, bytes);
-        }
-    }
-
 }
