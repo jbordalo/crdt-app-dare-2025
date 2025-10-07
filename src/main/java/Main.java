@@ -111,7 +111,7 @@ public class Main {
 		HyParView membershipProtocol = new HyParView("channel.hyparview", props, h);
 
 		MembershipMonitor mm = null; // new MembershipMonitor();
-
+		
 		Host gossipHost = new Host(h.getAddress(), h.getPort() + 1);
 
 		AdaptiveEagerPushGossipBroadcast bcast = null;
