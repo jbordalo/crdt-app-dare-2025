@@ -1,5 +1,6 @@
 import java.io.File;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
@@ -29,6 +30,9 @@ public class Main {
 		System.setProperty("java.net.preferIPv4Stack", "true");
 	}
 
+
+    private static final String SAVE_PATH = "/app/logs/";
+
 	// Creates the logger object
 	private static final Logger logger = LogManager.getLogger(Main.class);
 
@@ -38,6 +42,7 @@ public class Main {
 
 	@SuppressWarnings("unused")
 	private final CRDTApp app;
+
 
 	public Main(CRDTApp app) {
 		this.app = app;
@@ -83,11 +88,12 @@ public class Main {
 		Host monitorHost = new Host(monitorAddress, monitorPort);
 
 		SimpleMonitor mon = null;
-		if (h.getAddress().equals(monitorHost.getAddress())) {
+
+		if(Boolean.parseBoolean(props.getProperty("monitor", "false"))) {
 			// I'm the monitor
 			logger.info("{} acting as monitor.", h.getAddress());
 			mon = new SimpleMonitor(monitorHost,
-					new LocalTextStorage.Builder().setFormatter(new JSONFormatter()).build());
+					new LocalTextStorage.Builder().setPath(SAVE_PATH + "MonitorStorage.json").setFormatter(new JSONFormatter()).build());
 			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_METRIC));
 			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC));
 		}

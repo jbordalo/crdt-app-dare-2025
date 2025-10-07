@@ -360,6 +360,13 @@ public class CRDTAppDelta extends GenericProtocol {
 	}
 
 	private void handleBroadcastStateTimer(BroadcastStateTimer t, long time) {
+		if (!this.executing.getAcquire()) {
+			dumpState();
+			System.exit(0);
+		}
+
+		this.executing.set(false);
+
 		for (Map.Entry<Host, VersionVector> entry : neighborMetadata.entrySet()) {
 			Host neighbor = entry.getKey();
 			VersionVector neighborVV = entry.getValue();
