@@ -22,6 +22,7 @@ import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
 import tardis.app.CRDTAppDelta;
+import tardis.app.CRDTAppSingleDeltaBuffer;
 
 public class Main {
 	// Sets the log4j (logging library) configuration file
@@ -31,7 +32,8 @@ public class Main {
 	}
 
 
-    private static final String SAVE_PATH = "/app/logs/";
+    // private static final String SAVE_PATH = "/app/logs/";
+	private static final String SAVE_PATH = "logs/";
 
 	// Creates the logger object
 	private static final Logger logger = LogManager.getLogger(Main.class);
@@ -119,6 +121,10 @@ public class Main {
 		GenericProtocol app;
 
 		switch (props.getProperty("app.type")) {
+			case "single-delta":
+				app = new CRDTAppSingleDeltaBuffer(gossipHost);
+				bcast = new AdaptiveEagerPushGossipBroadcast("channel.gossip", props, gossipHost);
+				break;
 			case "delta":
 				app = new CRDTAppDelta(gossipHost);
 				break;

@@ -201,3 +201,4 @@ buildNumber.properties
 
 /scripts
 *.txt
+logs/
