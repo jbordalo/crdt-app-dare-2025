@@ -3,7 +3,6 @@ package tardis.app.data;
 import java.io.IOException;
 
 import io.netty.buffer.ByteBuf;
-import pt.unl.fct.di.novasys.babel.crdts.delta.causal.implementations.DeltaAWORSet;
 import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaORSet;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;

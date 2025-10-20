@@ -17,6 +17,8 @@ import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
+import tardis.app.CRDTAppBigDelta;
+import tardis.app.CRDTAppSmallDelta;
 
 public class Main {
 	// Sets the log4j (logging library) configuration file
@@ -36,9 +38,9 @@ public class Main {
 	private static final String DEFAULT_CONF = "tardis.conf";
 
 	@SuppressWarnings("unused")
-	private final CRDTApp app;
+	private final CRDTAppBigDelta app;
 
-	public Main(CRDTApp app) {
+	public Main(CRDTAppBigDelta app) {
 		this.app = app;
 	}
 
@@ -137,8 +139,18 @@ public class Main {
 
 		Host antiEntropyHost = new Host(h.getAddress(), h.getPort() + 1);
 
-		boolean deltaEnabled = props.getProperty("app.type").equals("delta");
-		CRDTApp app = new CRDTApp(antiEntropyHost, deltaEnabled);
+		GenericProtocol app = null;
+
+		switch (props.getProperty("app.type")) {
+			case "small-delta":
+				app = new CRDTAppSmallDelta(antiEntropyHost);
+				break;
+			case "big-delta":
+				app = new CRDTAppBigDelta(antiEntropyHost);
+				break;
+			default: // state-based
+				app = new CRDTApp(antiEntropyHost);
+		}
 
 		if (!props.containsKey("Metrics.monitor.address") || !props.containsKey("Metrics.monitor.port")) {
 			System.out.println("Missing monitor configuration");
@@ -147,7 +159,7 @@ public class Main {
 
 		// Solve the dependency between the data dissemination app and the broadcast
 		// protocol if omitted from the config
-		props.putIfAbsent(CRDTApp.PAR_BCAST_PROTOCOL_ID,
+		props.putIfAbsent(CRDTAppBigDelta.PAR_BCAST_PROTOCOL_ID,
 				AdaptiveEagerPushGossipBroadcast.PROTOCOL_ID + "");
 
 		GenericProtocol[] protocols = { membershipProtocol, mm, app, mon, exporter };

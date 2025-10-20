@@ -36,12 +36,11 @@ import tardis.app.command.Command;
 import tardis.app.data.CRDTStateMessage;
 import tardis.app.data.Card;
 import tardis.app.timers.SendStateTimer;
-import tardis.app.timers.SendVVTimer;
 import tardis.app.timers.SimulateClientTimer;
 
-public class CRDTApp extends GenericProtocol {
+public class CRDTAppSmallDelta extends GenericProtocol {
 
-	public final static String PROTO_NAME = "CRDT Mock Application (State-Based CRDT)";
+	public final static String PROTO_NAME = "CRDT Mock Application (δ-CRDT)";
 	public final static short PROTO_ID = 9898;
 
 	public final static String STATE_SIZE_SENT_METRIC = "averageStateSizeSent";
@@ -74,15 +73,17 @@ public class CRDTApp extends GenericProtocol {
 	private short bcastProtoID;
 
 	private final Host myself;
+	private final Peer myselfPeer;
 	private int channelId;
 
-	private Logger logger = LogManager.getLogger(CRDTApp.class);
+	private Logger logger = LogManager.getLogger(CRDTAppSmallDelta.class);
 
 	private AtomicBoolean executing;
 
 	private Thread managementThread;
 
 	private DeltaORSet crdt;
+	private DeltaORSet buffer;
 	private final Set<Host> neighbors = new HashSet<>();
 	private ArrayList<Card> localLog;
 
@@ -95,12 +96,13 @@ public class CRDTApp extends GenericProtocol {
 	private final boolean testing = true;
 	private int roundsLeft = 3;
 
-	public CRDTApp(Host myself) throws HandlerRegistrationException, IOException {
-		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
+	public CRDTAppSmallDelta(Host myself) throws HandlerRegistrationException, IOException {
+		super(CRDTAppSmallDelta.PROTO_NAME, CRDTAppSmallDelta.PROTO_ID);
 
 		this.myself = myself;
-		Peer peer = new Peer(myself.getAddress(), myself.getPort());
-		this.crdt = new DeltaORSet(new ReplicaID(peer));
+		myselfPeer = new Peer(myself.getAddress(), myself.getPort());
+		this.crdt = new DeltaORSet(new ReplicaID(myselfPeer));
+		this.buffer = new DeltaORSet(new ReplicaID(myselfPeer));
 
 		this.localLog = new ArrayList<>();
 
@@ -120,12 +122,12 @@ public class CRDTApp extends GenericProtocol {
 
 	private void registerMetrics() {
 		this.averageStateSizeSent = registerMetric(
-				new StatsGauge.Builder(CRDTApp.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
+				new StatsGauge.Builder(CRDTAppSmallDelta.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
 		this.averageFullStateSize = registerMetric(
-				new StatsGauge.Builder(CRDTApp.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
+				new StatsGauge.Builder(CRDTAppSmallDelta.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
-		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTApp.TIME_MERGING_METRIC, "ms")
+		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTAppSmallDelta.TIME_MERGING_METRIC, "ms")
 				.statTypes(StatType.AVG, StatType.MAX).build());
 	}
 
@@ -156,7 +158,8 @@ public class CRDTApp extends GenericProtocol {
 				.parseDouble(props.getProperty(PAR_WORKLOAD_PROBABILITY, DEFAULT_WORKLOAD_PROBABILITY));
 
 		setupPeriodicTimer(new SimulateClientTimer(), this.workloadPeriod, this.workloadPeriod);
-		setupPeriodicTimer(new SendVVTimer(), this.workloadPeriod * 5 - 2, this.workloadPeriod * 5 - 2);
+		// setupPeriodicTimer(new SendVVTimer(), this.workloadPeriod * 5-2,
+		// this.workloadPeriod * 5-2);
 		setupPeriodicTimer(new SendStateTimer(), this.workloadPeriod * 5, this.workloadPeriod * 5);
 
 		boolean b = DEFAULT_BCAST_INIT_ENABLED;
@@ -289,6 +292,7 @@ public class CRDTApp extends GenericProtocol {
 			}
 
 			this.crdt.remove(cardBytes);
+			this.buffer.remove(cardBytes);
 			// logger.debug("@remove, VV: {}", this.crdt.getReplicaState().getVV());
 
 			if (!this.crdt.lookup(cardBytes)) {
@@ -300,7 +304,9 @@ public class CRDTApp extends GenericProtocol {
 		} else {
 			// BUY
 			Card card = Card.randomCard();
-			DeltaORSet delta = this.crdt.add(new ByteArrayType(card.toBytes()));
+			ByteArrayType buf = new ByteArrayType(card.toBytes());
+			DeltaORSet delta = this.crdt.add(buf);
+			this.buffer.add(buf);
 			// logger.debug("@add, VV: {}", this.crdt.getReplicaState().getVV());
 			Iterator<SerializableType> it = delta.iterator();
 			if (it.hasNext()) {
@@ -353,20 +359,26 @@ public class CRDTApp extends GenericProtocol {
 		}
 
 		for (Host neighbor : neighbors) {
-			CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
+			CRDTStateMessage msg = new CRDTStateMessage(this.buffer);
 
 			// This can be its own thread, cause it's for metrics
 			int totalSize = calculateSize(this.crdt);
 			this.averageFullStateSize.observe(totalSize);
-			this.averageStateSizeSent.observe(totalSize);
+			int sizeSent = calculateSize(this.buffer);
+			this.averageStateSizeSent.observe(sizeSent);
 
-			if (totalSize == 0) {
+			if (sizeSent == 0) {
 				logger.info("Nothing to send");
 				return;
 			}
-			logger.info("Sending state of size {}, {}% of my total size", totalSize, 100);
-			sendMessage(msg, CRDTApp.PROTO_ID, neighbor);
+
+			logger.info("Sending state of size {}, {}% of my total size", sizeSent, sizeSent * 100 / totalSize);
+			sendMessage(msg, CRDTAppSmallDelta.PROTO_ID, neighbor);
 		}
+
+		// Clear the buffer
+		// this.buffer = new DeltaORSet(new ReplicaID(this.myselfPeer));
+		this.buffer = new DeltaORSet(this.crdt.getReplicaState());
 	}
 
 	// Handle new message received with CRDT
@@ -377,9 +389,10 @@ public class CRDTApp extends GenericProtocol {
 
 		this.averageTimeMerging.startTimedEvent("merge");
 
-		DeltaORSet state = msg.getState();
+		DeltaORSet delta = msg.getState();
 
-		this.crdt.mergeDelta(state);
+		this.crdt.mergeDelta(delta);
+		this.buffer.mergeDelta(delta);
 
 		this.averageTimeMerging.stopTimedEvent("merge");
 
@@ -402,6 +415,9 @@ public class CRDTApp extends GenericProtocol {
 		this.neighbors.add(h);
 		openConnection(h, this.channelId);
 		logger.debug("Neighbor up: {} ({} total)", h, neighbors.size());
+		logger.info("Sending full state to {}.", h);
+		CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
+		sendMessage(msg, CRDTAppSmallDelta.PROTO_ID, h);
 	}
 
 	private void handleNeighborDown(NeighborDown notif, short proto) {

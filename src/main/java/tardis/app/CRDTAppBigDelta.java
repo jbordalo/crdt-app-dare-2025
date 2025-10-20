@@ -23,6 +23,7 @@ import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaORSet;
 import pt.unl.fct.di.novasys.babel.crdts.utils.ReplicaID;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.ByteArrayType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
+import pt.unl.fct.di.novasys.babel.crdts.utils.ordering.VersionVector;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.metrics.Metric.Unit;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge;
@@ -35,13 +36,14 @@ import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.command.Command;
 import tardis.app.data.CRDTStateMessage;
 import tardis.app.data.Card;
+import tardis.app.data.VVMessage;
 import tardis.app.timers.SendStateTimer;
 import tardis.app.timers.SendVVTimer;
 import tardis.app.timers.SimulateClientTimer;
 
-public class CRDTApp extends GenericProtocol {
+public class CRDTAppBigDelta extends GenericProtocol {
 
-	public final static String PROTO_NAME = "CRDT Mock Application (State-Based CRDT)";
+	public final static String PROTO_NAME = "CRDT Mock Application (Δ-CRDT)";
 	public final static short PROTO_ID = 9898;
 
 	public final static String STATE_SIZE_SENT_METRIC = "averageStateSizeSent";
@@ -92,10 +94,10 @@ public class CRDTApp extends GenericProtocol {
 	private StatsGauge averageFullStateSize;
 
 	// Debugging
-	private final boolean testing = true;
-	private int roundsLeft = 3;
+	private boolean testing = true;
+	private int roundsLeft = 10;
 
-	public CRDTApp(Host myself) throws HandlerRegistrationException, IOException {
+	public CRDTAppBigDelta(Host myself) throws HandlerRegistrationException, IOException {
 		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
 
 		this.myself = myself;
@@ -109,10 +111,13 @@ public class CRDTApp extends GenericProtocol {
 		registerMetrics();
 
 		registerTimerHandler(SimulateClientTimer.TIMER_ID, this::uponSimulateClientTimer);
-		registerTimerHandler(SendStateTimer.TIMER_ID, this::uponSendStateTimer);
+		registerTimerHandler(SendVVTimer.TIMER_ID, this::uponSendVVTimer);
 
 		registerMessageSerializer(this.channelId, CRDTStateMessage.MSG_CODE, CRDTStateMessage.serializer);
 		registerMessageHandler(this.channelId, CRDTStateMessage.MSG_CODE, this::uponCRDTStateMessage);
+
+		registerMessageSerializer(this.channelId, VVMessage.MSG_CODE, VVMessage.serializer);
+		registerMessageHandler(this.channelId, VVMessage.MSG_CODE, this::uponVVMessage);
 
 		subscribeNotification(NeighborUp.NOTIFICATION_ID, this::handleNeighborUp);
 		subscribeNotification(NeighborDown.NOTIFICATION_ID, this::handleNeighborDown);
@@ -268,6 +273,26 @@ public class CRDTApp extends GenericProtocol {
 		if (!this.executing.getAcquire())
 			return;
 
+		if (this.testing) {
+			if (this.roundsLeft == 0) {
+				dumpState();
+				System.exit(0);
+			}
+
+			if (--this.roundsLeft == 0) {
+				// Final sync
+
+				// Broadcast my VV, so I can receive state from everyone
+				// Next time this runs it dumps state and exits
+				VersionVector vv = this.crdt.getReplicaState().getVV().copy();
+				VVMessage msg = new VVMessage(vv);
+				logger.debug("Sending Version Vector {} to neighbors", vv);
+				for (Host neighbor : neighbors) {
+					sendMessage(msg, CRDTAppBigDelta.PROTO_ID, neighbor);
+				}
+			}
+		}
+
 		if (this.generateMessageProbability < 1.0 && new Random().nextDouble() > this.generateMessageProbability)
 			return; // We have a probabibility for doing an action
 
@@ -340,33 +365,33 @@ public class CRDTApp extends GenericProtocol {
 		logger.info(String.format(s.toString(), count, stateSize / 1000));
 	}
 
-	private void uponSendStateTimer(SendStateTimer t, long time) {
-		// Testing code
-		if (this.testing) {
-			if (this.roundsLeft == 0) {
-				dumpState();
-				System.exit(0);
-			}
-
-			if (--this.roundsLeft == 0)
-				disableTransmissions();
-		}
-
+	private void uponSendVVTimer(SendVVTimer t, long time) {
+		VersionVector vv = this.crdt.getReplicaState().getVV().copy();
+		VVMessage msg = new VVMessage(vv);
+		logger.debug("Sending Version Vector {} to neighbors", vv);
 		for (Host neighbor : neighbors) {
-			CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
-
-			// This can be its own thread, cause it's for metrics
-			int totalSize = calculateSize(this.crdt);
-			this.averageFullStateSize.observe(totalSize);
-			this.averageStateSizeSent.observe(totalSize);
-
-			if (totalSize == 0) {
-				logger.info("Nothing to send");
-				return;
-			}
-			logger.info("Sending state of size {}, {}% of my total size", totalSize, 100);
-			sendMessage(msg, CRDTApp.PROTO_ID, neighbor);
+			sendMessage(msg, CRDTAppBigDelta.PROTO_ID, neighbor);
 		}
+	}
+
+	private void uponVVMessage(VVMessage msg, Host sender, short protoID, int cID) {
+		logger.debug("Received Version Vector {} from {}", msg.getVV(), sender);
+		logger.info("Sending delta to {}", sender);
+		VersionVector vv = msg.getVV();
+		DeltaORSet delta = this.crdt.generateDelta(vv);
+
+		CRDTStateMessage toSend = new CRDTStateMessage(delta);
+
+		// This can be its own thread, cause it's for metrics
+		int totalSize = calculateSize(this.crdt);
+		this.averageFullStateSize.observe(totalSize);
+		int sizeSent = calculateSize(delta);
+		this.averageStateSizeSent.observe(sizeSent);
+
+		if (sizeSent == 0)
+			return;
+
+		sendMessage(toSend, CRDTAppBigDelta.PROTO_ID, sender);
 	}
 
 	// Handle new message received with CRDT

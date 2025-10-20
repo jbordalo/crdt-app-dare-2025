@@ -214,16 +214,16 @@ public class Card {
 
     @Override
     public String toString() {
-        // for (int i = 0 ; i<names.length;i++) {
-        // if (names[i].equals(name)) return String.format("'%d'", i);
-        // }
-        // return "";
-        return String.format("[%s] %s%s - %s (%dB)",
-                String.format("%s...%s", id.substring(0, 3), id.substring(id.length() - 3)),
-                shiny ? "✨ " : "",
-                name,
-                description,
-                imageData.length);
+        for (int i = 0 ; i<names.length;i++) {
+        if (names[i].equals(name)) return String.format("'%d'", i);
+        }
+        return "";
+        // return String.format("[%s] %s%s - %s (%dB)",
+        //         String.format("%s...%s", id.substring(0, 3), id.substring(id.length() - 3)),
+        //         shiny ? "✨ " : "",
+        //         name,
+        //         description,
+        //         imageData.length);
     }
 
     // Factory for random cards
