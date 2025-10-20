@@ -1,6 +1,5 @@
 import java.io.File;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
@@ -8,21 +7,16 @@ import org.apache.logging.log4j.Logger;
 
 import pt.unl.fct.di.novasys.babel.core.Babel;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
-import pt.unl.fct.di.novasys.babel.metrics.exporters.CollectOptions;
-import pt.unl.fct.di.novasys.babel.metrics.exporters.ExporterCollectOptions;
 import pt.unl.fct.di.novasys.babel.metrics.exporters.MonitorExporter;
-import pt.unl.fct.di.novasys.babel.metrics.formatting.JSONFormatter;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.SimpleMonitor;
-import pt.unl.fct.di.novasys.babel.metrics.monitor.aggregation.DefaultAggregation;
-import pt.unl.fct.di.novasys.babel.metrics.monitor.datalayer.LocalTextStorage;
+import pt.unl.fct.di.novasys.babel.protocols.cyclon.Cyclon;
 import pt.unl.fct.di.novasys.babel.protocols.eagerpush.AdaptiveEagerPushGossipBroadcast;
 import pt.unl.fct.di.novasys.babel.protocols.hyparview.HyParView;
 import pt.unl.fct.di.novasys.babel.utils.NetworkingUtilities;
 import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
+import pt.unl.fct.di.novasys.channel.tcp.TCPChannel;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
-import tardis.app.CRDTAppDelta;
-import tardis.app.CRDTAppSingleDeltaBuffer;
 
 public class Main {
 	// Sets the log4j (logging library) configuration file
@@ -31,8 +25,7 @@ public class Main {
 		System.setProperty("java.net.preferIPv4Stack", "true");
 	}
 
-
-    // private static final String SAVE_PATH = "/app/logs/";
+	// private static final String SAVE_PATH = "/app/logs/";
 	private static final String SAVE_PATH = "logs/";
 
 	// Creates the logger object
@@ -44,7 +37,6 @@ public class Main {
 
 	@SuppressWarnings("unused")
 	private final CRDTApp app;
-
 
 	public Main(CRDTApp app) {
 		this.app = app;
@@ -91,47 +83,62 @@ public class Main {
 
 		SimpleMonitor mon = null;
 
-		if(Boolean.parseBoolean(props.getProperty("monitor", "false"))) {
-			// I'm the monitor
-			logger.info("{} acting as monitor.", h.getAddress());
-			mon = new SimpleMonitor(monitorHost,
-					new LocalTextStorage.Builder().setPath(SAVE_PATH + "MonitorStorage.json").setFormatter(new JSONFormatter()).build());
-			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_METRIC));
-			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC));
-		}
+		// if (Boolean.parseBoolean(props.getProperty("monitor", "false"))) {
+		// // I'm the monitor
+		// logger.info("{} acting as monitor.", h.getAddress());
+		// mon = new SimpleMonitor(monitorHost,
+		// new LocalTextStorage.Builder().setPath(SAVE_PATH + "MonitorStorage.json")
+		// .setFormatter(new SimpleFormatter()).setAppend(false).build());
+		// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+		// CRDTApp.FULL_STATE_SIZE_METRIC));
+		// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+		// CRDTApp.STATE_SIZE_SENT_METRIC));
+		// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+		// CRDTApp.TIME_MERGING_METRIC));
+		// }
 
 		Host exporterHost = new Host(h.getAddress(), h.getPort() + 2);
 
-		MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost, 60000,
-				ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID).collectAllMetrics(false)
-						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_METRIC, new CollectOptions(true))
-						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new CollectOptions(true))
-						.build());
+		MonitorExporter exporter = null;
+		// MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost,
+		// 58000,
+		// ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID).collectAllMetrics(false)
+		// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.FULL_STATE_SIZE_METRIC,
+		// new CollectOptions(true))
+		// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_SENT_METRIC,
+		// new CollectOptions(true))
+		// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new
+		// CollectOptions(true))
+		// .build());
 
 		System.out.println("localhost is set to: " + h);
 
-		HyParView membershipProtocol = new HyParView("channel.hyparview", props, h);
-
-		MembershipMonitor mm = null; // new MembershipMonitor();
-		
-		Host gossipHost = new Host(h.getAddress(), h.getPort() + 1);
-
-		AdaptiveEagerPushGossipBroadcast bcast = null;
-
-		GenericProtocol app;
-
-		switch (props.getProperty("app.type")) {
-			case "single-delta":
-				app = new CRDTAppSingleDeltaBuffer(gossipHost);
-				bcast = new AdaptiveEagerPushGossipBroadcast("channel.gossip", props, gossipHost);
-				break;
-			case "delta":
-				app = new CRDTAppDelta(gossipHost);
-				break;
-			default:
-				app = new CRDTApp(gossipHost);
-				bcast = new AdaptiveEagerPushGossipBroadcast("channel.gossip", props, gossipHost);
+		if (!props.containsKey("Membership.overlay")) {
+			System.err.println("Missing membership overlay.");
 		}
+
+		GenericProtocol membershipProtocol = null;
+
+		switch (props.getProperty("Membership.overlay").toLowerCase()) {
+			case "hyparview":
+				membershipProtocol = new HyParView("channel.hyparview", props, h);
+				break;
+			case "cyclon":
+				membershipProtocol = new Cyclon(TCPChannel.NAME, props, h);
+				break;
+		}
+
+		if (membershipProtocol == null) {
+			System.err.println("No membership protocol provided.");
+			System.exit(1);
+		}
+
+		MembershipMonitor mm = new MembershipMonitor();
+
+		Host antiEntropyHost = new Host(h.getAddress(), h.getPort() + 1);
+
+		boolean deltaEnabled = props.getProperty("app.type").equals("delta");
+		CRDTApp app = new CRDTApp(antiEntropyHost, deltaEnabled);
 
 		if (!props.containsKey("Metrics.monitor.address") || !props.containsKey("Metrics.monitor.port")) {
 			System.out.println("Missing monitor configuration");
@@ -143,7 +150,7 @@ public class Main {
 		props.putIfAbsent(CRDTApp.PAR_BCAST_PROTOCOL_ID,
 				AdaptiveEagerPushGossipBroadcast.PROTOCOL_ID + "");
 
-		GenericProtocol[] protocols = { membershipProtocol, mm, bcast, app, mon, exporter };
+		GenericProtocol[] protocols = { membershipProtocol, mm, app, mon, exporter };
 
 		for (GenericProtocol protocol : protocols) {
 			if (protocol == null)
@@ -161,7 +168,7 @@ public class Main {
 
 		System.out.println("Setup is complete.");
 
-		babel.startMetrics();
+		// babel.startMetrics();
 		babel.start();
 		System.out.println("System is running.");
 	}

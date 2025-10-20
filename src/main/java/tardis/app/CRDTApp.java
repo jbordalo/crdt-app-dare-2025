@@ -6,7 +6,9 @@ import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Scanner;
@@ -16,46 +18,48 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
-import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaLWWSet;
+import pt.unl.fct.di.novasys.babel.crdts.delta.causal.implementations.DeltaAWORSet;
+import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaORSet;
 import pt.unl.fct.di.novasys.babel.crdts.utils.ReplicaID;
+import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.ByteArrayType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
-import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.StringType;
+import pt.unl.fct.di.novasys.babel.crdts.utils.ordering.VersionVector;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.metrics.Metric.Unit;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge.StatType;
-import pt.unl.fct.di.novasys.babel.protocols.dissemination.notifications.BroadcastDelivery;
-import pt.unl.fct.di.novasys.babel.protocols.dissemination.requests.BroadcastRequest;
 import pt.unl.fct.di.novasys.babel.protocols.membership.Peer;
+import pt.unl.fct.di.novasys.babel.protocols.membership.notifications.NeighborDown;
+import pt.unl.fct.di.novasys.babel.protocols.membership.notifications.NeighborUp;
+import pt.unl.fct.di.novasys.channel.tcp.TCPChannel;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.command.Command;
+import tardis.app.data.CRDTStateMessage;
 import tardis.app.data.Card;
-import tardis.app.timers.AppWorkloadGenerateTimer;
-import tardis.app.timers.BroadcastStateTimer;
+import tardis.app.data.VVMessage;
+import tardis.app.timers.SendStateTimer;
+import tardis.app.timers.SendVVTimer;
+import tardis.app.timers.SimulateClientTimer;
 
 public class CRDTApp extends GenericProtocol {
 
 	public final static String PROTO_NAME = "CRDT Mock Application";
 	public final static short PROTO_ID = 9898;
 
-	public final static String STATE_SIZE_METRIC = "averageStateSize";
+	public final static String STATE_SIZE_SENT_METRIC = "averageStateSizeSent";
+	public final static String FULL_STATE_SIZE_METRIC = "averageFullStateSize";
 	public final static String TIME_MERGING_METRIC = "averageTimeMerging";
-
-	private boolean generateWorkload;
 
 	public final static String PAR_WORKLOAD_PERIOD = "app.workload.period";
 	public final static String PAR_WORKLOAD_SIZE = "app.workload.payload";
 	public final static String PAR_GENERATE_WORKLOAD = "app.workload.on";
 
-	private static final double BUY_PROBABILITY = 0.9;
-	public final static long DEFAULT_WORKLOAD_PERIOD = 10 * 1000; // 10 seconds
-	public final static int DEFAULT_WORKLOAD_SIZE = 63000;
+	private static final double BUY_PROBABILITY = 0.7;
+	public final static String DEFAULT_WORKLOAD_PERIOD = "10000"; // 10 seconds
 
 	public final static String PAR_WORKLOAD_PROBABILITY = "app.workload.probability";
-	public final static double DEFAULT_WORKLOAD_PROBABILITY = 1.0;
+	public final static String DEFAULT_WORKLOAD_PROBABILITY = "1.0";
 
 	public final static String PAR_BCAST_PROTOCOL_ID = "app.bcast.id";
 
@@ -73,43 +77,78 @@ public class CRDTApp extends GenericProtocol {
 	private short bcastProtoID;
 
 	private final Host myself;
+	private int channelId;
 
 	private Logger logger = LogManager.getLogger(CRDTApp.class);
 
 	private AtomicBoolean executing;
 
-	private String nodeLabel;
-
 	private Thread managementThread;
 
-	private DeltaLWWSet crdt;
-	private ArrayList<StringType> localLog;
-	private StatsGauge averageTimeMerging;
-	private StatsGauge averageStateSize;
+	private DeltaORSet crdt;
+	private final Map<Host, VersionVector> neighborMetadata = new HashMap<>();
+	private ArrayList<Card> localLog;
 
-	public CRDTApp(Host myself) throws HandlerRegistrationException {
+	// Metrics
+	private StatsGauge averageTimeMerging;
+	private StatsGauge averageStateSizeSent;
+	private StatsGauge averageFullStateSize;
+
+	// Debugging
+	private final boolean testing = true;
+	private int roundsLeft = 3;
+	private boolean deltaEnabled = false;
+
+	public CRDTApp(Host myself, boolean deltaEnabled) throws HandlerRegistrationException, IOException {
 		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
 
 		this.myself = myself;
 		Peer peer = new Peer(myself.getAddress(), myself.getPort());
-		this.crdt = new DeltaLWWSet(new ReplicaID(peer));
+		this.crdt = new DeltaORSet(new ReplicaID(peer));
+
+		this.deltaEnabled = deltaEnabled;
 
 		this.localLog = new ArrayList<>();
 
-		try {
-			this.nodeLabel = myself.getAddress().getHostName().split(".")[3];
-		} catch (Exception e) {
-			this.nodeLabel = myself.getAddress().getHostName();
-		}
+		createChannel();
 
-		this.averageStateSize = registerMetric(
-				new StatsGauge.Builder(CRDTApp.STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG).build());
+		registerMetrics();
+
+		registerTimerHandler(SimulateClientTimer.TIMER_ID, this::uponSimulateClientTimer);
+		registerTimerHandler(SendStateTimer.TIMER_ID, this::uponSendStateTimer);
+		registerTimerHandler(SendVVTimer.TIMER_ID, this::uponSendVVTimer);
+
+		registerMessageSerializer(this.channelId, CRDTStateMessage.MSG_CODE, CRDTStateMessage.serializer);
+		registerMessageHandler(this.channelId, CRDTStateMessage.MSG_CODE, this::uponCRDTStateMessage);
+
+		registerMessageSerializer(this.channelId, VVMessage.MSG_CODE, VVMessage.serializer);
+		registerMessageHandler(this.channelId, VVMessage.MSG_CODE, this::uponVVMessage);
+
+
+		subscribeNotification(NeighborUp.NOTIFICATION_ID, this::handleNeighborUp);
+		subscribeNotification(NeighborDown.NOTIFICATION_ID, this::handleNeighborDown);
+	}
+
+	private void registerMetrics() {
+		this.averageStateSizeSent = registerMetric(
+				new StatsGauge.Builder(CRDTApp.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
+						.build());
+		this.averageFullStateSize = registerMetric(
+				new StatsGauge.Builder(CRDTApp.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
+						.build());
 		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTApp.TIME_MERGING_METRIC, "ms")
 				.statTypes(StatType.AVG, StatType.MAX).build());
+	}
 
-		registerTimerHandler(AppWorkloadGenerateTimer.PROTO_ID, this::handleAppWorkloadGenerateTimer);
-		registerTimerHandler(BroadcastStateTimer.PROTO_ID, this::handleBroadcastStateTimer);
-		subscribeNotification(BroadcastDelivery.NOTIFICATION_ID, this::handleMessageDeliveryEvent);
+	private void createChannel() throws IOException {
+		Properties channelProps = new Properties();
+		// The address to bind to
+		channelProps.setProperty(TCPChannel.ADDRESS_KEY, myself.getAddress().getHostAddress());
+		channelProps.setProperty(TCPChannel.PORT_KEY, "" + myself.getPort()); // The port to bind to
+		this.channelId = createChannel(TCPChannel.NAME, channelProps);
+		setDefaultChannel(channelId);
+		logger.debug("Created new channel with id {} and bounded to: {}:{}", this.channelId, myself.getAddress(),
+				myself.getPort());
 	}
 
 	@Override
@@ -123,25 +162,15 @@ public class CRDTApp extends GenericProtocol {
 			System.exit(1);
 		}
 
-		this.generateWorkload = props.containsKey(PAR_GENERATE_WORKLOAD);
+		logger.debug("deltaEnabled={}", deltaEnabled);
 
-		if (this.generateWorkload) {
-			if (props.containsKey(PAR_WORKLOAD_PERIOD))
-				this.workloadPeriod = Long.parseLong(props.getProperty(PAR_WORKLOAD_PERIOD));
-			else
-				this.workloadPeriod = DEFAULT_WORKLOAD_PERIOD;
+		this.workloadPeriod = Long.parseLong(props.getProperty(PAR_WORKLOAD_PERIOD, DEFAULT_WORKLOAD_PERIOD));
+		this.generateMessageProbability = Double
+				.parseDouble(props.getProperty(PAR_WORKLOAD_PROBABILITY, DEFAULT_WORKLOAD_PROBABILITY));
 
-			if (props.containsKey(PAR_WORKLOAD_PROBABILITY))
-				this.generateMessageProbability = Double.parseDouble(props.getProperty(PAR_WORKLOAD_PROBABILITY));
-			else
-				this.generateMessageProbability = DEFAULT_WORKLOAD_PROBABILITY;
-
-			setupPeriodicTimer(new AppWorkloadGenerateTimer(), this.workloadPeriod, this.workloadPeriod);
-			logger.debug("CRDTApp has workload generation enabled.");
-		} else
-			logger.debug("CRDTApp has workload generation disabled.");
-
-		setupPeriodicTimer(new BroadcastStateTimer(), this.workloadPeriod * 5, this.workloadPeriod * 5);
+		setupPeriodicTimer(new SimulateClientTimer(), this.workloadPeriod, this.workloadPeriod);
+		setupPeriodicTimer(new SendVVTimer(), this.workloadPeriod * 5-2, this.workloadPeriod * 5-2);
+		setupPeriodicTimer(new SendStateTimer(), this.workloadPeriod * 5, this.workloadPeriod * 5);
 
 		boolean b = DEFAULT_BCAST_INIT_ENABLED;
 
@@ -153,8 +182,7 @@ public class CRDTApp extends GenericProtocol {
 
 		// If app.management is present but set to false, don't start the management
 		// thread
-		if (props.containsKey(PAR_MANAGEMENT_THREAD)
-				&& !Boolean.parseBoolean(props.getProperty(PAR_MANAGEMENT_THREAD))) {
+		if (!Boolean.parseBoolean(props.getProperty(PAR_MANAGEMENT_THREAD, "false"))) {
 			return;
 		}
 
@@ -249,16 +277,14 @@ public class CRDTApp extends GenericProtocol {
 		}
 	}
 
-	private void handleAppWorkloadGenerateTimer(AppWorkloadGenerateTimer t, long time) {
+	private void uponSimulateClientTimer(SimulateClientTimer t, long time) {
 		if (!this.executing.getAcquire())
 			return;
 
 		if (this.generateMessageProbability < 1.0 && new Random().nextDouble() > this.generateMessageProbability)
 			return; // We have a probabibility for doing an action
 
-		// BUY_PROBABILITY% chance of buying, 1-BUY_PROBABILITY% of selling, so the
-		// state keeps growing steadily
-		// That said, removing still grows state :)
+		// BUY_PROBABILITY% chance of buying, 1-BUY_PROBABILITY%
 		if (new Random().nextDouble() > BUY_PROBABILITY) {
 			// SELL
 			if (localLog.size() == 0) {
@@ -267,115 +293,176 @@ public class CRDTApp extends GenericProtocol {
 			}
 
 			int randomSell = ThreadLocalRandom.current().nextInt(localLog.size());
-			StringType sold = this.localLog.get(randomSell);
-			if (!this.crdt.lookup(sold)) {
-				logger.error("Local log was off, card is not for sale anymore");
+			Card card = this.localLog.get(randomSell);
+			ByteArrayType cardBytes = new ByteArrayType(card.toBytes());
+
+			if (!this.crdt.lookup(cardBytes)) {
+				logger.error("Local log was off, card {} is not for sale anymore", card);
 				return;
 			}
-			this.crdt.remove(sold);
 
-			if (!this.crdt.lookup(sold)) {
-				localLog.remove(sold);
-				logger.info("Sold card {}", Card.preview(sold.getValue()));
+			this.crdt.remove(cardBytes);
+			// logger.debug("@remove, VV: {}", this.crdt.getReplicaState().getVV());
+
+			if (!this.crdt.lookup(cardBytes)) {
+				localLog.remove(card);
+				logger.info("Sold card {}", card);
 			} else {
 				System.err.println("CRDT remove is broken");
 			}
 		} else {
 			// BUY
-			StringType card = new StringType(Card.randomCard().toString());
-			DeltaLWWSet delta = this.crdt.add(card);
+			Card card = Card.randomCard();
+			DeltaORSet delta = this.crdt.add(new ByteArrayType(card.toBytes()));
+			// logger.debug("@add, VV: {}", this.crdt.getReplicaState().getVV());
 			Iterator<SerializableType> it = delta.iterator();
 			if (it.hasNext()) {
-				localLog.add((StringType) it.next());
-				logger.info("Bought card {}", Card.preview(card.toString()));
+				localLog.add(card);
+				logger.info("Bought card {}", card);
 			}
 		}
+	}
+
+	private int calculateSize(DeltaORSet toSend) {
+		int size = 0;
+		Iterator<SerializableType> it = toSend.iterator();
+		while (it.hasNext()) {
+			byte[] cardBytes = ((ByteArrayType) it.next()).getValue();
+			size += cardBytes.length;
+		}
+		return size;
 	}
 
 	private void dumpState() {
 		StringBuilder s = new StringBuilder();
-		s.append("%d Pokemon\n");
 		s.append("[");
 
 		int count = 0;
+		int stateSize = 0;
 		Iterator<SerializableType> it = this.crdt.iterator();
 		while (it.hasNext()) {
-			s.append(String.format("%s ; ", Card.preview(((StringType) it.next()).getValue())));
+			byte[] cardBytes = ((ByteArrayType) it.next()).getValue();
+			Card c = Card.fromBytes(cardBytes);
+			s.append(c);
+			stateSize += cardBytes.length;
 			count++;
 		}
-		s.append("]");
-		logger.info(String.format(s.toString(), count));
+		s.append("]\n");
+		s.append("%d Pokemon\n");
+		s.append("Total state size=%d kB\n");
+		logger.info(String.format(s.toString(), count, stateSize / 1000));
 	}
 
-	private void handleBroadcastStateTimer(BroadcastStateTimer t, long time) {
-		if (!this.executing.getAcquire()) {
-			dumpState();
-			System.exit(0);
+	private void uponSendVVTimer(SendVVTimer t, long time) {
+		VersionVector vv = this.crdt.getReplicaState().getVV().copy();
+		VVMessage msg = new VVMessage(vv);
+		logger.debug("Sending Version Vector {} to neighbors", vv);
+		for (Map.Entry<Host, VersionVector> entry : neighborMetadata.entrySet()) {
+			sendMessage(msg, CRDTApp.PROTO_ID, entry.getKey());
+		}
+	}
+
+	private void uponSendStateTimer(SendStateTimer t, long time) {
+		// Testing code
+		if (this.testing) {
+			if (this.roundsLeft == 0) {
+				dumpState();
+				System.exit(0);
+			}
+
+			if (--this.roundsLeft == 0)
+				disableTransmissions();
 		}
 
-		this.executing.set(false);
+		for (Map.Entry<Host, VersionVector> entry : neighborMetadata.entrySet()) {
+			Host neighbor = entry.getKey();
+			DeltaORSet toSend = null;
 
-		ByteBuf in = Unpooled.buffer();
+			if (this.deltaEnabled) {
+				VersionVector neighborVV = entry.getValue();
+				logger.debug("Generating delta for {}", neighborVV);
+				logger.debug("My vv: {}", this.crdt.getReplicaState().getVV());
+				toSend = this.crdt.generateDelta(neighborVV);
+			} else {
+				toSend = (DeltaORSet) this.crdt.copy();
+			}
 
-		try {
-			// Send my state
-			this.crdt.serialize(in);
-		} catch (IOException e) {
-			logger.error("Failed to serialize CRDT");
-			e.printStackTrace();
+			CRDTStateMessage msg = new CRDTStateMessage(toSend);
+
+			// This can be its own thread, cause it's for metrics
+			int totalSize = calculateSize(this.crdt);
+			this.averageFullStateSize.observe(totalSize);
+			int sizeSent = calculateSize(toSend);
+			this.averageStateSizeSent.observe(sizeSent);
+
+			if (sizeSent == 0) {
+				logger.info("Nothing to send");
+				return;
+			}
+			logger.info("Sending state of size {}, {}% of my total size", sizeSent, sizeSent*100/totalSize);
+			sendMessage(msg, CRDTApp.PROTO_ID, neighbor);
 		}
+	}
 
-		int stateSize = in.writerIndex();
-		logger.debug("Sending state of size {} bytes", stateSize);
-		this.averageStateSize.observe(stateSize);
-
-		byte[] payload = new byte[stateSize];
-		in.getBytes(0, payload);
-
-		BroadcastRequest request = new BroadcastRequest(myself, payload, PROTO_ID);
-		sendRequest(request, bcastProtoID);
+	private void uponVVMessage(VVMessage msg, Host sender, short protoID, int cID) {
+		logger.debug("Received Version Vector {} from {}", msg.getVV(), sender);
+		if (this.deltaEnabled) {
+			this.neighborMetadata.put(sender, msg.getVV());
+		}
 	}
 
 	// Handle new message received with CRDT
-	private void handleMessageDeliveryEvent(BroadcastDelivery msg, short proto) {
-		if (msg.getSender().equals(this.myself)) {
-			return;
-		}
+	private void uponCRDTStateMessage(CRDTStateMessage msg, Host sender, short protoID, int cID) {
+		logger.info("Received state from {}.", sender);
+		logger.debug("Version Vector: {}", msg.getState().getReplicaState().getVV());
+		logger.debug("Mine: {}", this.crdt.getReplicaState().getVV());
 
-		DeltaLWWSet state;
+		long startMerge = System.nanoTime();
 
-		try {
-			ByteBuf in = Unpooled.wrappedBuffer(msg.getPayload());
+		this.averageTimeMerging.startTimedEvent("merge");
 
-			long startDeserialize = System.nanoTime();
-			state = DeltaLWWSet.serializer.deserialize(in);
-			long endDeserialize = System.nanoTime();
+		DeltaORSet state = msg.getState();
 
-			long startMerge = System.nanoTime();
-			this.averageTimeMerging.startTimedEvent("merge");
-			this.crdt.mergeDelta(state);
-			this.averageTimeMerging.stopTimedEvent("merge");
-			long endMerge = System.nanoTime();
+		this.crdt.mergeDelta(state);
 
-			long deserializationMicros = (endDeserialize - startDeserialize) / 1_000;
-			long mergeMicros = (endMerge - startMerge) / 1_000;
+		// dumpState();
 
-			logger.debug("Deserialization took {} µs, merge took {} µs", deserializationMicros, mergeMicros);
+		this.averageTimeMerging.stopTimedEvent("merge");
 
-			this.localLog.clear();
-			Iterator<SerializableType> it = this.crdt.iterator();
-			while (it.hasNext()) {
-				this.localLog.add((StringType) it.next());
-			}
-		} catch (Exception e) {
-			logger.error(e);
-			System.err.println(e);
+		// if (this.deltaEnabled) {
+		// 	this.neighborMetadata.put(sender, state.getReplicaState().getVV());
+		// }
+
+		long endMerge = System.nanoTime();
+		long mergeMicros = (endMerge - startMerge) / 1_000;
+
+		logger.debug("Merge took {} µs", mergeMicros);
+
+		this.localLog.clear();
+
+		// TODO this can probably be more efficient
+		Iterator<SerializableType> it = this.crdt.iterator();
+		while (it.hasNext()) {
+			this.localLog.add(Card.fromBytes(((ByteArrayType) it.next()).getValue()));
 		}
 	}
 
+	private void handleNeighborUp(NeighborUp notif, short proto) {
+		Host h = new Host(notif.getPeer().getAddress(), this.myself.getPort());
+		this.neighborMetadata.putIfAbsent(h, new VersionVector());
+		openConnection(h, this.channelId);
+		logger.debug("Neighbor up: {} ({} total)", h, neighborMetadata.size());
+	}
+
+	private void handleNeighborDown(NeighborDown notif, short proto) {
+		Host h = new Host(notif.getPeer().getAddress(), this.myself.getPort());
+		this.neighborMetadata.remove(h);
+		closeConnection(h, this.channelId);
+		logger.debug("Neighbor down: {} ({} total)", h, neighborMetadata.size());
+	}
+
 	/**
-	 * This method disables the transmission of more messages after it being
-	 * executed...
+	 * This method disables message transmission
 	 */
 	public void disableTransmissions() {
 		this.executing.set(false);

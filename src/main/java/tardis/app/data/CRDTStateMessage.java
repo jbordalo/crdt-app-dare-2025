@@ -3,21 +3,22 @@ package tardis.app.data;
 import java.io.IOException;
 
 import io.netty.buffer.ByteBuf;
-import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaLWWSet;
+import pt.unl.fct.di.novasys.babel.crdts.delta.causal.implementations.DeltaAWORSet;
+import pt.unl.fct.di.novasys.babel.crdts.delta.implementations.DeltaORSet;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;
 
 public class CRDTStateMessage extends ProtoMessage {
     public final static short MSG_CODE = 3184;
 
-    private DeltaLWWSet state;
+    private DeltaORSet state;
 
-    public CRDTStateMessage(DeltaLWWSet state) {
+    public CRDTStateMessage(DeltaORSet state) {
         super(CRDTStateMessage.MSG_CODE);
         this.state = state;
     }
 
-    public DeltaLWWSet getState() {
+    public DeltaORSet getState() {
         return this.state;
     }
 
@@ -28,15 +29,8 @@ public class CRDTStateMessage extends ProtoMessage {
         }
 
         @Override
-        public CRDTStateMessage deserialize(ByteBuf in) {
-            DeltaLWWSet state = null;
-            try {
-                state = DeltaLWWSet.serializer.deserialize(in);
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                System.err.println("I FAILED _HERE");
-                e.printStackTrace();
-            }
+        public CRDTStateMessage deserialize(ByteBuf in) throws IOException {
+            DeltaORSet state = DeltaORSet.serializer.deserialize(in);
             return new CRDTStateMessage(state);
         }
     };

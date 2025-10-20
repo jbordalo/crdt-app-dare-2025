@@ -1,10 +1,12 @@
 package tardis.app.data;
 
-import java.util.Base64;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-
-import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.StringType;
 
 public class Card {
     private static final String[] names = { "Bulbasaur",
@@ -159,8 +161,8 @@ public class Card {
             "Mewtwo",
             "Mew" };
 
-    private static final int NORMAL_BASE_SIZE = 1_000_000;
-    private static final int SHINY_MAX_SIZE = 5_000_000;
+    private static final int NORMAL_BASE_SIZE_BYTES = 1_000;
+    private static final int SHINY_SIZE_MULTIPLIER = 5;
 
     private final String id;
     private final String name;
@@ -212,17 +214,12 @@ public class Card {
 
     @Override
     public String toString() {
-        return String.format("[%s] %s%s - %s [%s]",
-                id,
-                shiny ? "✨ " : "",
-                name,
-                description,
-                Base64.getEncoder().encodeToString(imageData));
-    }
-
-    public String toStringShort() {
+        // for (int i = 0 ; i<names.length;i++) {
+        // if (names[i].equals(name)) return String.format("'%d'", i);
+        // }
+        // return "";
         return String.format("[%s] %s%s - %s (%dB)",
-                id,
+                String.format("%s...%s", id.substring(0, 3), id.substring(id.length() - 3)),
                 shiny ? "✨ " : "",
                 name,
                 description,
@@ -240,11 +237,11 @@ public class Card {
 
         int imageSize;
         if (shiny) {
-            imageSize = rng.nextInt(NORMAL_BASE_SIZE, SHINY_MAX_SIZE + 1);
+            imageSize = rng.nextInt(NORMAL_BASE_SIZE_BYTES, NORMAL_BASE_SIZE_BYTES * SHINY_SIZE_MULTIPLIER + 1);
         } else {
-            int fluctuation = (int) (NORMAL_BASE_SIZE * 0.2);
+            int fluctuation = (int) (NORMAL_BASE_SIZE_BYTES * 0.2);
             int variation = rng.nextInt(-fluctuation, fluctuation);
-            imageSize = NORMAL_BASE_SIZE + variation;
+            imageSize = NORMAL_BASE_SIZE_BYTES + variation;
         }
 
         String id = UUID.randomUUID().toString();
@@ -252,31 +249,47 @@ public class Card {
         return new Card(id, name, description, shiny, randomBytes(imageSize));
     }
 
-    public static String extractId(StringType elem) {
-        return elem.getValue().split(" ")[0];
+    public byte[] toBytes() {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DataOutputStream out = new DataOutputStream(baos)) {
+
+            out.writeUTF(id);
+            out.writeUTF(name);
+            out.writeUTF(description);
+            out.writeBoolean(shiny);
+            out.writeInt(imageData.length);
+            out.write(imageData);
+            return baos.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to serialize Card", e);
+        } catch (Exception e) {
+            System.err.println("Caught unexpected exception in Card.toBytes");
+            System.err.println(e);
+            throw e;
+        }
     }
 
-    public static String preview(String val) {
-		// Split only first 4 spaces (ID, shiny?, name, description + Base64)
-		String[] parts = val.split(" ", 4);
+    public static Card fromBytes(byte[] data) {
+        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(data))) {
+            String id = in.readUTF();
+            String name = in.readUTF();
+            String description = in.readUTF();
+            boolean shiny = in.readBoolean();
+            int len = in.readInt();
+            byte[] image = new byte[len];
+            in.readFully(image);
+            return new Card(id, name, description, shiny, image);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to deserialize Card", e);
+        } catch (Exception e) {
+            System.err.println("Caught unexpected exception in Card.fromBytes");
+            System.err.println(e);
+            throw e;
+        }
+    }
 
-		String id = parts[0].replace("[", "").replace("]", "");
-		boolean shiny = parts[1].equals("✨");
-		String name = shiny ? parts[2] : parts[1];
-
-		// Extract Base64 part
-		int b64Start = val.lastIndexOf('[');
-		int b64End = val.lastIndexOf(']');
-		String b64 = "?";
-		if (b64Start >= 0 && b64End > b64Start) {
-			String fullB64 = val.substring(b64Start + 1, b64End);
-			int len = fullB64.length();
-			b64 = fullB64.substring(0, Math.min(8, len)) + "..." + fullB64.substring(Math.max(len - 8, 0));
-		}
-
-		return "[" + id.substring(0, Math.min(8, id.length())) + "] "
-				+ (shiny ? "✨ " : "")
-				+ name + " "
-				+ "img[" + b64 + "]";
+    @Override
+    public boolean equals(Object obj) {
+        return this.id.equals(((Card) obj).getId());
     }
 }

@@ -39,6 +39,10 @@
 			level="info" additivity="false">
 			<AppenderRef ref="console" />
 		</Logger>
+		<Logger name="pt.unl.fct.di.novasys.babel.protocols.cyclon"
+			level="trace" additivity="false">
+			<AppenderRef ref="console" />
+		</Logger>
 		<Logger name="pt.unl.fct.di.novasys.babel.utils.recordexporter"
 			level="debug" additivity="false">
 			<AppenderRef ref="console" />
