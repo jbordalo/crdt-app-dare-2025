@@ -7,8 +7,13 @@ import org.apache.logging.log4j.Logger;
 
 import pt.unl.fct.di.novasys.babel.core.Babel;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
+import pt.unl.fct.di.novasys.babel.metrics.exporters.CollectOptions;
+import pt.unl.fct.di.novasys.babel.metrics.exporters.ExporterCollectOptions;
 import pt.unl.fct.di.novasys.babel.metrics.exporters.MonitorExporter;
+import pt.unl.fct.di.novasys.babel.metrics.formatting.SimpleFormatter;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.SimpleMonitor;
+import pt.unl.fct.di.novasys.babel.metrics.monitor.aggregation.DefaultAggregation;
+import pt.unl.fct.di.novasys.babel.metrics.monitor.datalayer.LocalTextStorage;
 import pt.unl.fct.di.novasys.babel.protocols.cyclon.Cyclon;
 import pt.unl.fct.di.novasys.babel.protocols.eagerpush.AdaptiveEagerPushGossipBroadcast;
 import pt.unl.fct.di.novasys.babel.protocols.hyparview.HyParView;
@@ -85,33 +90,31 @@ public class Main {
 
 		SimpleMonitor mon = null;
 
-		// if (Boolean.parseBoolean(props.getProperty("monitor", "false"))) {
-		// // I'm the monitor
-		// logger.info("{} acting as monitor.", h.getAddress());
-		// mon = new SimpleMonitor(monitorHost,
-		// new LocalTextStorage.Builder().setPath(SAVE_PATH + "MonitorStorage.json")
-		// .setFormatter(new SimpleFormatter()).setAppend(false).build());
-		// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
-		// CRDTApp.FULL_STATE_SIZE_METRIC));
-		// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
-		// CRDTApp.STATE_SIZE_SENT_METRIC));
-		// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
-		// CRDTApp.TIME_MERGING_METRIC));
-		// }
+		if (Boolean.parseBoolean(props.getProperty("monitor", "false"))) {
+			// I'm the monitor
+			logger.info("{} acting as monitor.", h.getAddress());
+			mon = new SimpleMonitor(monitorHost,
+					new LocalTextStorage.Builder().setPath(SAVE_PATH + "MonitorStorage.json")
+							.setFormatter(new SimpleFormatter()).setAppend(false).build());
+			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+					CRDTApp.FULL_STATE_SIZE_METRIC));
+			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+					CRDTApp.STATE_SIZE_SENT_METRIC));
+			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+					CRDTApp.TIME_MERGING_METRIC));
+		}
 
 		Host exporterHost = new Host(h.getAddress(), h.getPort() + 2);
 
-		MonitorExporter exporter = null;
-		// MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost,
-		// 58000,
-		// ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID).collectAllMetrics(false)
-		// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.FULL_STATE_SIZE_METRIC,
-		// new CollectOptions(true))
-		// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_SENT_METRIC,
-		// new CollectOptions(true))
-		// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new
-		// CollectOptions(true))
-		// .build());
+		MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost,
+				58000,
+				ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID).collectAllMetrics(false)
+						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.FULL_STATE_SIZE_METRIC,
+								new CollectOptions(true))
+						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_SENT_METRIC,
+								new CollectOptions(true))
+						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new CollectOptions(true))
+						.build());
 
 		System.out.println("localhost is set to: " + h);
 
