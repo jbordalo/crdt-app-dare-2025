@@ -92,7 +92,7 @@ public class CRDTApp extends GenericProtocol {
 	private StatsGauge averageFullStateSize;
 
 	// Debugging
-	private final boolean testing = true;
+	private final boolean testing = false;
 	private int roundsLeft = 3;
 
 	public CRDTApp(Host myself) throws HandlerRegistrationException, IOException {
@@ -355,7 +355,7 @@ public class CRDTApp extends GenericProtocol {
 		for (Host neighbor : neighbors) {
 			CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
 
-			// This can be its own thread, cause it's for metrics
+			// This could be its own thread, cause it's for metrics
 			int totalSize = calculateSize(this.crdt);
 			this.averageFullStateSize.observe(totalSize);
 			this.averageStateSizeSent.observe(totalSize);
@@ -388,9 +388,8 @@ public class CRDTApp extends GenericProtocol {
 
 		logger.debug("Merge took {} µs", mergeMicros);
 
-		this.localLog.clear();
-
 		// TODO this can probably be more efficient
+		this.localLog.clear();
 		Iterator<SerializableType> it = this.crdt.iterator();
 		while (it.hasNext()) {
 			this.localLog.add(Card.fromBytes(((ByteArrayType) it.next()).getValue()));

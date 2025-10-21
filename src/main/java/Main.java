@@ -10,6 +10,7 @@ import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.metrics.exporters.CollectOptions;
 import pt.unl.fct.di.novasys.babel.metrics.exporters.ExporterCollectOptions;
 import pt.unl.fct.di.novasys.babel.metrics.exporters.MonitorExporter;
+import pt.unl.fct.di.novasys.babel.metrics.formatting.JSONFormatter;
 import pt.unl.fct.di.novasys.babel.metrics.formatting.SimpleFormatter;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.SimpleMonitor;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.aggregation.DefaultAggregation;
@@ -18,7 +19,6 @@ import pt.unl.fct.di.novasys.babel.protocols.eagerpush.AdaptiveEagerPushGossipBr
 import pt.unl.fct.di.novasys.babel.protocols.hyparview.HyParView;
 import pt.unl.fct.di.novasys.babel.utils.NetworkingUtilities;
 import pt.unl.fct.di.novasys.babel.utils.memebership.monitor.MembershipMonitor;
-import pt.unl.fct.di.novasys.channel.tcp.TCPChannel;
 import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
 import tardis.app.CRDTAppBigDelta;
@@ -93,8 +93,8 @@ public class Main {
 			// I'm the monitor
 			logger.info("{} acting as monitor.", h.getAddress());
 			mon = new SimpleMonitor(monitorHost,
-					new LocalTextStorage.Builder().setPath(SAVE_PATH + "MonitorStorage.json")
-							.setFormatter(new SimpleFormatter()).setAppend(false).build());
+					new LocalTextStorage.Builder().setPath(SAVE_PATH + "storage_" + props.getProperty("app.type") + ".json")
+							.setFormatter(new JSONFormatter()).setAppend(false).build());
 			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
 					CRDTApp.FULL_STATE_SIZE_METRIC));
 			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
@@ -121,21 +121,7 @@ public class Main {
 			System.err.println("Missing membership overlay.");
 		}
 
-		GenericProtocol membershipProtocol = null;
-
-		switch (props.getProperty("Membership.overlay").toLowerCase()) {
-			case "hyparview":
-				membershipProtocol = new HyParView("channel.hyparview", props, h);
-				break;
-			//case "cyclon":
-				//membershipProtocol = new Cyclon(TCPChannel.NAME, props, h);
-				//break;
-		}
-
-		if (membershipProtocol == null) {
-			System.err.println("No membership protocol provided.");
-			System.exit(1);
-		}
+		GenericProtocol membershipProtocol = new HyParView("channel.hyparview", props, h);
 
 		MembershipMonitor mm = new MembershipMonitor();
 
@@ -182,7 +168,7 @@ public class Main {
 
 		System.out.println("Setup is complete.");
 
-		// babel.startMetrics();
+		babel.startMetrics();
 		babel.start();
 		System.out.println("System is running.");
 	}

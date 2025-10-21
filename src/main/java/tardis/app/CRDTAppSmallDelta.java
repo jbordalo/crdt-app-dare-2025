@@ -6,8 +6,10 @@ import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Scanner;
@@ -83,8 +85,8 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	private Thread managementThread;
 
 	private DeltaORSet crdt;
-	private DeltaORSet buffer;
-	private final Set<Host> neighbors = new HashSet<>();
+	// private DeltaORSet buffer;
+	private final Map<Host, DeltaORSet> neighbors = new HashMap<>();
 	private ArrayList<Card> localLog;
 
 	// Metrics
@@ -93,8 +95,8 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	private StatsGauge averageFullStateSize;
 
 	// Debugging
-	private final boolean testing = true;
-	private int roundsLeft = 3;
+	private final boolean testing = false;
+	private int roundsLeft = 5;
 
 	public CRDTAppSmallDelta(Host myself) throws HandlerRegistrationException, IOException {
 		super(CRDTAppSmallDelta.PROTO_NAME, CRDTAppSmallDelta.PROTO_ID);
@@ -102,7 +104,7 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		this.myself = myself;
 		myselfPeer = new Peer(myself.getAddress(), myself.getPort());
 		this.crdt = new DeltaORSet(new ReplicaID(myselfPeer));
-		this.buffer = new DeltaORSet(new ReplicaID(myselfPeer));
+		// this.buffer = new DeltaORSet(new ReplicaID(myselfPeer));
 
 		this.localLog = new ArrayList<>();
 
@@ -146,7 +148,7 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	public void init(Properties props) throws HandlerRegistrationException, IOException {
 		if (props.containsKey(PAR_BCAST_PROTOCOL_ID)) {
 			this.bcastProtoID = Short.parseShort(props.getProperty(PAR_BCAST_PROTOCOL_ID));
-			logger.debug("CRDTApp is configured to use broadcast protocol with id: " + this.bcastProtoID);
+			logger.debug("CRDTAppSmallDelta is configured to use broadcast protocol with id: " + this.bcastProtoID);
 		} else {
 			logger.error("The application requires the id of the broadcast protocol being used. Parameter: '"
 					+ PAR_BCAST_PROTOCOL_ID + "'");
@@ -291,8 +293,10 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 				return;
 			}
 
-			this.crdt.remove(cardBytes);
-			this.buffer.remove(cardBytes);
+			DeltaORSet delta = this.crdt.remove(cardBytes);
+			// this.buffer.remove(cardBytes);
+			mergeBuffers(delta, null);
+
 			// logger.debug("@remove, VV: {}", this.crdt.getReplicaState().getVV());
 
 			if (!this.crdt.lookup(cardBytes)) {
@@ -306,7 +310,9 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 			Card card = Card.randomCard();
 			ByteArrayType buf = new ByteArrayType(card.toBytes());
 			DeltaORSet delta = this.crdt.add(buf);
-			this.buffer.add(buf);
+			// this.buffer.add(buf);
+			mergeBuffers(delta, null);
+
 			// logger.debug("@add, VV: {}", this.crdt.getReplicaState().getVV());
 			Iterator<SerializableType> it = delta.iterator();
 			if (it.hasNext()) {
@@ -358,13 +364,14 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 				disableTransmissions();
 		}
 
-		for (Host neighbor : neighbors) {
-			CRDTStateMessage msg = new CRDTStateMessage(this.buffer);
+		for (Host neighbor : neighbors.keySet()) {
+			DeltaORSet buffer = neighbors.get(neighbor);
+			CRDTStateMessage msg = new CRDTStateMessage(buffer);
 
 			// This can be its own thread, cause it's for metrics
 			int totalSize = calculateSize(this.crdt);
 			this.averageFullStateSize.observe(totalSize);
-			int sizeSent = calculateSize(this.buffer);
+			int sizeSent = calculateSize(buffer);
 			this.averageStateSizeSent.observe(sizeSent);
 
 			if (sizeSent == 0) {
@@ -376,9 +383,10 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 			sendMessage(msg, CRDTAppSmallDelta.PROTO_ID, neighbor);
 		}
 
-		// Clear the buffer
-		// this.buffer = new DeltaORSet(new ReplicaID(this.myselfPeer));
-		this.buffer = new DeltaORSet(this.crdt.getReplicaState());
+		// Clear the buffers
+		for (Host neighbor : neighbors.keySet()) {
+			neighbors.put(neighbor, new DeltaORSet(this.crdt.getReplicaState()));
+		}
 	}
 
 	// Handle new message received with CRDT
@@ -392,7 +400,8 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		DeltaORSet delta = msg.getState();
 
 		this.crdt.mergeDelta(delta);
-		this.buffer.mergeDelta(delta);
+
+		mergeBuffers(delta, sender);
 
 		this.averageTimeMerging.stopTimedEvent("merge");
 
@@ -410,9 +419,17 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		}
 	}
 
+	private void mergeBuffers(DeltaORSet delta, Host exclude) {
+		for (Host neighbor : this.neighbors.keySet()) {
+			if (exclude != null && neighbor.equals(exclude)) continue;
+			
+			neighbors.get(neighbor).mergeDelta(delta);
+		}	
+	}
+
 	private void handleNeighborUp(NeighborUp notif, short proto) {
 		Host h = new Host(notif.getPeer().getAddress(), this.myself.getPort());
-		this.neighbors.add(h);
+		this.neighbors.put(h, new DeltaORSet(this.crdt.getReplicaState()));
 		openConnection(h, this.channelId);
 		logger.debug("Neighbor up: {} ({} total)", h, neighbors.size());
 		logger.info("Sending full state to {}.", h);

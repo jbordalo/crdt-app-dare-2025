@@ -78,7 +78,7 @@ public class CRDTAppBigDelta extends GenericProtocol {
 	private final Host myself;
 	private int channelId;
 
-	private Logger logger = LogManager.getLogger(CRDTApp.class);
+	private Logger logger = LogManager.getLogger(CRDTAppBigDelta.class);
 
 	private AtomicBoolean executing;
 
@@ -94,11 +94,11 @@ public class CRDTAppBigDelta extends GenericProtocol {
 	private StatsGauge averageFullStateSize;
 
 	// Debugging
-	private boolean testing = true;
+	private boolean testing = false;
 	private int roundsLeft = 10;
 
 	public CRDTAppBigDelta(Host myself) throws HandlerRegistrationException, IOException {
-		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
+		super(CRDTAppBigDelta.PROTO_NAME, CRDTAppBigDelta.PROTO_ID);
 
 		this.myself = myself;
 		Peer peer = new Peer(myself.getAddress(), myself.getPort());
@@ -125,12 +125,12 @@ public class CRDTAppBigDelta extends GenericProtocol {
 
 	private void registerMetrics() {
 		this.averageStateSizeSent = registerMetric(
-				new StatsGauge.Builder(CRDTApp.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
+				new StatsGauge.Builder(CRDTAppBigDelta.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
 		this.averageFullStateSize = registerMetric(
-				new StatsGauge.Builder(CRDTApp.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
+				new StatsGauge.Builder(CRDTAppBigDelta.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
-		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTApp.TIME_MERGING_METRIC, "ms")
+		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTAppBigDelta.TIME_MERGING_METRIC, "ms")
 				.statTypes(StatType.AVG, StatType.MAX).build());
 	}
 
