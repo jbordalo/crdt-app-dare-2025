@@ -14,7 +14,6 @@ import pt.unl.fct.di.novasys.babel.metrics.formatting.SimpleFormatter;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.SimpleMonitor;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.aggregation.DefaultAggregation;
 import pt.unl.fct.di.novasys.babel.metrics.monitor.datalayer.LocalTextStorage;
-import pt.unl.fct.di.novasys.babel.protocols.cyclon.Cyclon;
 import pt.unl.fct.di.novasys.babel.protocols.eagerpush.AdaptiveEagerPushGossipBroadcast;
 import pt.unl.fct.di.novasys.babel.protocols.hyparview.HyParView;
 import pt.unl.fct.di.novasys.babel.utils.NetworkingUtilities;
@@ -128,9 +127,9 @@ public class Main {
 			case "hyparview":
 				membershipProtocol = new HyParView("channel.hyparview", props, h);
 				break;
-			case "cyclon":
-				membershipProtocol = new Cyclon(TCPChannel.NAME, props, h);
-				break;
+			//case "cyclon":
+				//membershipProtocol = new Cyclon(TCPChannel.NAME, props, h);
+				//break;
 		}
 
 		if (membershipProtocol == null) {
