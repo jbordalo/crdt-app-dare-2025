@@ -7,14 +7,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Scanner;
-import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
@@ -73,6 +70,8 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	private double generateMessageProbability;
 
 	private short bcastProtoID;
+
+	private final Random rand = new Random(42);
 
 	private final Host myself;
 	private final Peer myselfPeer;
@@ -160,8 +159,6 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 				.parseDouble(props.getProperty(PAR_WORKLOAD_PROBABILITY, DEFAULT_WORKLOAD_PROBABILITY));
 
 		setupPeriodicTimer(new SimulateClientTimer(), this.workloadPeriod, this.workloadPeriod);
-		// setupPeriodicTimer(new SendVVTimer(), this.workloadPeriod * 5-2,
-		// this.workloadPeriod * 5-2);
 		setupPeriodicTimer(new SendStateTimer(), this.workloadPeriod * 5, this.workloadPeriod * 5);
 
 		boolean b = DEFAULT_BCAST_INIT_ENABLED;
@@ -273,18 +270,18 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		if (!this.executing.getAcquire())
 			return;
 
-		if (this.generateMessageProbability < 1.0 && new Random().nextDouble() > this.generateMessageProbability)
+		if (this.generateMessageProbability < 1.0 && this.rand.nextDouble() > this.generateMessageProbability)
 			return; // We have a probabibility for doing an action
 
 		// BUY_PROBABILITY% chance of buying, 1-BUY_PROBABILITY%
-		if (new Random().nextDouble() > BUY_PROBABILITY) {
+		if (this.rand.nextDouble() > BUY_PROBABILITY) {
 			// SELL
 			if (localLog.size() == 0) {
 				logger.debug("Nothing to sell");
 				return;
 			}
 
-			int randomSell = ThreadLocalRandom.current().nextInt(localLog.size());
+			int randomSell = this.rand.nextInt(localLog.size());
 			Card card = this.localLog.get(randomSell);
 			ByteArrayType cardBytes = new ByteArrayType(card.toBytes());
 

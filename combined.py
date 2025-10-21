@@ -4,8 +4,9 @@ import os
 
 # List your JSONL files here
 files = [
-    "logs/storage_small-delta.json",
-    "logs/storage_big-delta.json"
+    "results/storage_state.json",
+    "results/storage_small-delta.json",
+    "results/storage_big-delta.json"
 ]
 
 fig, axes = plt.subplots(1, len(files), figsize=(10 * len(files), 5), sharey=True)

@@ -12,7 +12,6 @@ import java.util.Properties;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
@@ -67,6 +66,8 @@ public class CRDTApp extends GenericProtocol {
 	private static final String PAR_MANAGEMENT_THREAD = "app.management";
 
 	public final static int DEFAULT_MANAGEMENT_PORT = Command.DEFAULT_MANAGE_PORT;
+
+	private final Random rand = new Random(42);
 
 	private long workloadPeriod;
 	private double generateMessageProbability;
@@ -268,18 +269,18 @@ public class CRDTApp extends GenericProtocol {
 		if (!this.executing.getAcquire())
 			return;
 
-		if (this.generateMessageProbability < 1.0 && new Random().nextDouble() > this.generateMessageProbability)
+		if (this.generateMessageProbability < 1.0 && rand.nextDouble() > this.generateMessageProbability)
 			return; // We have a probabibility for doing an action
 
 		// BUY_PROBABILITY% chance of buying, 1-BUY_PROBABILITY%
-		if (new Random().nextDouble() > BUY_PROBABILITY) {
+		if (rand.nextDouble() > BUY_PROBABILITY) {
 			// SELL
 			if (localLog.size() == 0) {
 				logger.debug("Nothing to sell");
 				return;
 			}
 
-			int randomSell = ThreadLocalRandom.current().nextInt(localLog.size());
+			int randomSell = this.rand.nextInt(localLog.size());
 			Card card = this.localLog.get(randomSell);
 			ByteArrayType cardBytes = new ByteArrayType(card.toBytes());
 
@@ -357,7 +358,7 @@ public class CRDTApp extends GenericProtocol {
 
 			// This could be its own thread, cause it's for metrics
 			int totalSize = calculateSize(this.crdt);
-			logger.info("BEFORE OBSERVING {}", totalSize);
+
 			this.averageFullStateSize.observe(totalSize);
 			this.averageStateSizeSent.observe(totalSize);
 
