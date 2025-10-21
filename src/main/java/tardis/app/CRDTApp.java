@@ -357,6 +357,7 @@ public class CRDTApp extends GenericProtocol {
 
 			// This could be its own thread, cause it's for metrics
 			int totalSize = calculateSize(this.crdt);
+			logger.info("BEFORE OBSERVING {}", totalSize);
 			this.averageFullStateSize.observe(totalSize);
 			this.averageStateSizeSent.observe(totalSize);
 

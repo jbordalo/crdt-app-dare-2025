@@ -432,8 +432,11 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		this.neighbors.put(h, new DeltaORSet(this.crdt.getReplicaState()));
 		openConnection(h, this.channelId);
 		logger.debug("Neighbor up: {} ({} total)", h, neighbors.size());
+
 		logger.info("Sending full state to {}.", h);
 		CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
+		int sizeSent = calculateSize(this.crdt);
+		this.averageStateSizeSent.observe(sizeSent);
 		sendMessage(msg, CRDTAppSmallDelta.PROTO_ID, h);
 	}
 
