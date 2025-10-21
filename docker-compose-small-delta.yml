@@ -1,0 +1,29 @@
+services:
+  contact:
+    image: crdt-app
+    #container_name: contact
+    command: ["java", "-jar", "app.jar", "-conf", "contact.conf", "HyParView.contact=none", "babel.interface=eth0", "monitor=true", "app.type=small-delta"]
+    networks:
+      - crdt_net
+    volumes:
+      - ./logs/contact:/app/logs
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+  node:
+    image: crdt-app
+    depends_on:
+      - contact
+    command: ["sh", "-c", "sleep 2 && java -jar app.jar HyParView.contact=contact:5555 babel.interface=eth0 app.type=small-delta"]
+    networks:
+      - crdt_net
+    volumes:
+      - ./logs:/app/logs
+    deploy:
+      replicas: 19
+
+networks:
+  crdt_net:
+    #name: crdt_net
+    driver: overlay 
