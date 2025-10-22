@@ -98,7 +98,7 @@ public class CRDTApp extends GenericProtocol {
 	private PrintStream stateLog;
 
 	// Debugging
-	private final boolean testing = true;
+	private final boolean testing = false;
 	private int roundsLeft = 5;
 
 	public CRDTApp(Host myself) throws HandlerRegistrationException, IOException {

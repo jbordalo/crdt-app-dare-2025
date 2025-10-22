@@ -97,8 +97,10 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	private StatsGauge averageStateSizeSent;
 	private Gauge fullStateSize;
 
+	private final boolean transitive = false;
+
 	// Debugging
-	private final boolean testing = true;
+	private final boolean testing = false;
 	private int roundsLeft = 5;
 
 	public CRDTAppSmallDelta(Host myself) throws HandlerRegistrationException, IOException {
@@ -411,7 +413,9 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 
 		this.crdt.mergeDelta(delta);
 
-		mergeBuffers(delta, sender);
+		if (this.transitive) {
+			mergeBuffers(delta, sender);
+		}
 
 		this.averageTimeMerging.stopTimedEvent("merge");
 

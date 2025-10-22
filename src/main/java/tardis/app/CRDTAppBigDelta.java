@@ -97,7 +97,7 @@ public class CRDTAppBigDelta extends GenericProtocol {
 
 	// Debugging
 	private boolean testing = false;
-	private int roundsLeft = 10;
+	private int roundsLeft = 5;
 
 	public CRDTAppBigDelta(Host myself) throws HandlerRegistrationException, IOException {
 		super(CRDTAppBigDelta.PROTO_NAME, CRDTAppBigDelta.PROTO_ID);
