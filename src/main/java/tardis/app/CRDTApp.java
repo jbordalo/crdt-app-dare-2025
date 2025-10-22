@@ -24,6 +24,7 @@ import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.ByteArrayType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.metrics.Metric.Unit;
+import pt.unl.fct.di.novasys.babel.metrics.Gauge;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge.StatType;
 import pt.unl.fct.di.novasys.babel.protocols.membership.Peer;
@@ -90,7 +91,7 @@ public class CRDTApp extends GenericProtocol {
 	// Metrics
 	private StatsGauge averageTimeMerging;
 	private StatsGauge averageStateSizeSent;
-	private StatsGauge averageFullStateSize;
+	private Gauge fullStateSize;
 
 	// Debugging
 	private final boolean testing = false;
@@ -123,9 +124,8 @@ public class CRDTApp extends GenericProtocol {
 		this.averageStateSizeSent = registerMetric(
 				new StatsGauge.Builder(CRDTApp.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
-		this.averageFullStateSize = registerMetric(
-				new StatsGauge.Builder(CRDTApp.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
-						.build());
+		this.fullStateSize = registerMetric(
+				new Gauge.Builder(CRDTApp.FULL_STATE_SIZE_METRIC, Unit.BYTES).build());
 		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTApp.TIME_MERGING_METRIC, "ms")
 				.statTypes(StatType.AVG, StatType.MAX).build());
 	}
@@ -353,13 +353,16 @@ public class CRDTApp extends GenericProtocol {
 				disableTransmissions();
 		}
 
+		logger.info("Communication step");
+
+		// This could be its own thread, cause it's for metrics
+		int totalSize = calculateSize(this.crdt);
+		this.fullStateSize.set(totalSize);
+
 		for (Host neighbor : neighbors) {
 			CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
 
-			// This could be its own thread, cause it's for metrics
-			int totalSize = calculateSize(this.crdt);
 
-			this.averageFullStateSize.observe(totalSize);
 			this.averageStateSizeSent.observe(totalSize);
 
 			if (totalSize == 0) {

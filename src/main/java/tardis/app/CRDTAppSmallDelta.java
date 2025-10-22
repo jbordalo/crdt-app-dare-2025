@@ -24,6 +24,7 @@ import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.ByteArrayType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.metrics.Metric.Unit;
+import pt.unl.fct.di.novasys.babel.metrics.Gauge;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge.StatType;
 import pt.unl.fct.di.novasys.babel.protocols.membership.Peer;
@@ -91,7 +92,7 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	// Metrics
 	private StatsGauge averageTimeMerging;
 	private StatsGauge averageStateSizeSent;
-	private StatsGauge averageFullStateSize;
+	private Gauge fullStateSize;
 
 	// Debugging
 	private final boolean testing = false;
@@ -125,9 +126,8 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		this.averageStateSizeSent = registerMetric(
 				new StatsGauge.Builder(CRDTAppSmallDelta.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
-		this.averageFullStateSize = registerMetric(
-				new StatsGauge.Builder(CRDTAppSmallDelta.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
-						.build());
+		this.fullStateSize = registerMetric(
+				new Gauge.Builder(CRDTAppSmallDelta.FULL_STATE_SIZE_METRIC, Unit.BYTES).build());
 		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTAppSmallDelta.TIME_MERGING_METRIC, "ms")
 				.statTypes(StatType.AVG, StatType.MAX).build());
 	}
@@ -361,19 +361,18 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 				disableTransmissions();
 		}
 
+		int totalSize = calculateSize(this.crdt);
+		this.fullStateSize.set(totalSize);
 		for (Host neighbor : neighbors.keySet()) {
 			DeltaORSet buffer = neighbors.get(neighbor);
 			CRDTStateMessage msg = new CRDTStateMessage(buffer);
 
-			// This can be its own thread, cause it's for metrics
-			int totalSize = calculateSize(this.crdt);
-			this.averageFullStateSize.observe(totalSize);
 			int sizeSent = calculateSize(buffer);
 			this.averageStateSizeSent.observe(sizeSent);
 
 			if (sizeSent == 0) {
 				logger.info("Nothing to send");
-				return;
+				continue;
 			}
 
 			logger.info("Sending state of size {}, {}% of my total size", sizeSent, sizeSent * 100 / totalSize);

@@ -24,6 +24,7 @@ import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.ByteArrayType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.datatypes.SerializableType;
 import pt.unl.fct.di.novasys.babel.crdts.utils.ordering.VersionVector;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
+import pt.unl.fct.di.novasys.babel.metrics.Gauge;
 import pt.unl.fct.di.novasys.babel.metrics.Metric.Unit;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge;
 import pt.unl.fct.di.novasys.babel.metrics.StatsGauge.StatType;
@@ -92,7 +93,7 @@ public class CRDTAppBigDelta extends GenericProtocol {
 	// Metrics
 	private StatsGauge averageTimeMerging;
 	private StatsGauge averageStateSizeSent;
-	private StatsGauge averageFullStateSize;
+	private Gauge fullStateSize;
 
 	// Debugging
 	private boolean testing = false;
@@ -128,9 +129,8 @@ public class CRDTAppBigDelta extends GenericProtocol {
 		this.averageStateSizeSent = registerMetric(
 				new StatsGauge.Builder(CRDTAppBigDelta.STATE_SIZE_SENT_METRIC, Unit.BYTES).statTypes(StatType.AVG)
 						.build());
-		this.averageFullStateSize = registerMetric(
-				new StatsGauge.Builder(CRDTAppBigDelta.FULL_STATE_SIZE_METRIC, Unit.BYTES).statTypes(StatType.AVG)
-						.build());
+		this.fullStateSize = registerMetric(
+				new Gauge.Builder(CRDTAppBigDelta.FULL_STATE_SIZE_METRIC, Unit.BYTES).build());
 		this.averageTimeMerging = registerMetric(new StatsGauge.Builder(CRDTAppBigDelta.TIME_MERGING_METRIC, "ms")
 				.statTypes(StatType.AVG, StatType.MAX).build());
 	}
@@ -385,7 +385,7 @@ public class CRDTAppBigDelta extends GenericProtocol {
 
 		// This can be its own thread, cause it's for metrics
 		int totalSize = calculateSize(this.crdt);
-		this.averageFullStateSize.observe(totalSize);
+		this.fullStateSize.set(totalSize);
 		int sizeSent = calculateSize(delta);
 		this.averageStateSizeSent.observe(sizeSent);
 

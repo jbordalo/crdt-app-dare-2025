@@ -99,20 +99,20 @@ public class Main {
 					CRDTApp.FULL_STATE_SIZE_METRIC));
 			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
 					CRDTApp.STATE_SIZE_SENT_METRIC));
-			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
-					CRDTApp.TIME_MERGING_METRIC));
+			// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
+					// CRDTApp.TIME_MERGING_METRIC));
 		}
 
 		Host exporterHost = new Host(h.getAddress(), h.getPort() + 2);
 
 		MonitorExporter exporter = new MonitorExporter(exporterHost, monitorHost,
-				58000,
+				52000,
 				ExporterCollectOptions.builder().protocolsToCollect(CRDTApp.PROTO_ID).collectAllMetrics(false)
 						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.FULL_STATE_SIZE_METRIC,
 								new CollectOptions(true))
 						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_SENT_METRIC,
 								new CollectOptions(true))
-						.metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new CollectOptions(true))
+						// .metricCollectOptions(CRDTApp.PROTO_ID, CRDTApp.TIME_MERGING_METRIC, new CollectOptions(true))
 						.build());
 
 		System.out.println("localhost is set to: " + h);
