@@ -1,7 +1,7 @@
 import json
 import matplotlib.pyplot as plt
 
-filename = "logs/storage_small-delta.json"
+filename = "results/storage_state.json"
 
 average_full_state_sizes = []
 average_state_sizes_sent = []
