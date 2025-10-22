@@ -6,29 +6,15 @@
 			<PatternLayout
 				pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
 		</Console>
-		<File name="filelog" fileName="${hostName}-general.log"
+		<File name="filelog" fileName="logs/${hostName}-general.log"
 			immediateFlush="false" append="false">
 			<PatternLayout
 				pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
 		</File>
-		<File name="msglog" fileName="${hostName}-message.log"
+		<File name="msglog" fileName="logs/${hostName}-message.log"
 			immediateFlush="false" append="false">
 			<PatternLayout pattern="%d{UNIX_MILLIS} %msg%n" />
 		</File>
-		<File name="controller" fileName="${hostName}-controller.log"
-			immediateFlush="false" append="false">
-			<PatternLayout pattern="%d{UNIX_MILLIS} %msg%n" />
-		</File>
-		<File name="autonomic" fileName="${hostName}-autonomic-trace.log"
-			immediateFlush="true" append="true">
-			<PatternLayout pattern="%d{UNIX_MILLIS} %msg%n" />
-		</File>
-		<!-- 
-		<File name="channels" fileName="${hostName}-channels-trace.log" immediateFlush="false" 
-			append="false"> <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] 
-			%-5level %logger{36} - %msg%n"/> 
-		</File>
-		-->
 	</Appenders>
 
 	<Loggers>
