@@ -5,10 +5,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class Card {
+	private static final Random rand = new Random(42);
     private static final String[] names = { "Bulbasaur",
             "Ivysaur",
             "Venusaur",
@@ -188,7 +189,7 @@ public class Card {
 
     private static byte[] randomBytes(int size) {
         byte[] bytes = new byte[size];
-        ThreadLocalRandom.current().nextBytes(bytes);
+        rand.nextBytes(bytes);
         return bytes;
     }
 
@@ -228,19 +229,19 @@ public class Card {
 
     // Factory for random cards
     public static Card randomCard() {
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        // ThreadLocalRandom rng = ThreadLocalRandom.current();
 
-        String name = names[rng.nextInt(names.length)];
+        String name = names[rand.nextInt(names.length)];
         String description = "Card of " + name;
 
-        boolean shiny = rng.nextDouble() < 0.05;
+        boolean shiny = rand.nextDouble() < 0.05;
 
         int imageSize;
         if (shiny) {
-            imageSize = rng.nextInt(NORMAL_BASE_SIZE_BYTES, NORMAL_BASE_SIZE_BYTES * SHINY_SIZE_MULTIPLIER + 1);
+            imageSize = rand.nextInt(NORMAL_BASE_SIZE_BYTES, NORMAL_BASE_SIZE_BYTES * SHINY_SIZE_MULTIPLIER + 1);
         } else {
             int fluctuation = (int) (NORMAL_BASE_SIZE_BYTES * 0.2);
-            int variation = rng.nextInt(-fluctuation, fluctuation);
+            int variation = rand.nextInt(-fluctuation, fluctuation);
             imageSize = NORMAL_BASE_SIZE_BYTES + variation;
         }
 
