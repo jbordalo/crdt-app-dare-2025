@@ -93,9 +93,13 @@ public class CRDTApp extends GenericProtocol {
 	private StatsGauge averageStateSizeSent;
 	private Gauge fullStateSize;
 
+	private long totalSentSize = 0;
+	private int sentCount = 0;
+	private PrintStream stateLog;
+
 	// Debugging
-	private final boolean testing = false;
-	private int roundsLeft = 3;
+	private final boolean testing = true;
+	private int roundsLeft = 5;
 
 	public CRDTApp(Host myself) throws HandlerRegistrationException, IOException {
 		super(CRDTApp.PROTO_NAME, CRDTApp.PROTO_ID);
@@ -103,7 +107,9 @@ public class CRDTApp extends GenericProtocol {
 		this.myself = myself;
 		Peer peer = new Peer(myself.getAddress(), myself.getPort());
 		this.crdt = new DeltaORSet(new ReplicaID(peer));
-
+		this.stateLog = new PrintStream("state_log_" + myself.getAddress().toString().split("\\.")[3] + ".csv");
+		stateLog.println("timestamp_ms,full_state_size_bytes,avg_state_sent_bytes");
+		stateLog.flush();
 		this.localLog = new ArrayList<>();
 
 		createChannel();
@@ -358,12 +364,14 @@ public class CRDTApp extends GenericProtocol {
 		// This could be its own thread, cause it's for metrics
 		int totalSize = calculateSize(this.crdt);
 		this.fullStateSize.set(totalSize);
-
+		stateLog.printf("%d,%d", System.currentTimeMillis(), totalSize);
+		
 		for (Host neighbor : neighbors) {
 			CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
 
-
-			this.averageStateSizeSent.observe(totalSize);
+			// this.averageStateSizeSent.observe(totalSize);
+			this.totalSentSize += totalSize;
+			sentCount++;
 
 			if (totalSize == 0) {
 				logger.info("Nothing to send");
@@ -372,6 +380,13 @@ public class CRDTApp extends GenericProtocol {
 			logger.info("Sending state of size {}, {}% of my total size", totalSize, 100);
 			sendMessage(msg, CRDTApp.PROTO_ID, neighbor);
 		}
+
+		long avgSent = (sentCount > 0) ? totalSentSize / sentCount : 0;
+		averageStateSizeSent.observe(avgSent);
+		stateLog.printf(",%d%n", avgSent);
+		stateLog.flush();
+		totalSentSize=0;
+		sentCount=0;
 	}
 
 	// Handle new message received with CRDT

@@ -88,6 +88,9 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	// private DeltaORSet buffer;
 	private final Map<Host, DeltaORSet> neighbors = new HashMap<>();
 	private ArrayList<Card> localLog;
+	private long totalSentSize = 0;
+	private int sentCount = 0;
+	private PrintStream stateLog;
 
 	// Metrics
 	private StatsGauge averageTimeMerging;
@@ -95,7 +98,7 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 	private Gauge fullStateSize;
 
 	// Debugging
-	private final boolean testing = false;
+	private final boolean testing = true;
 	private int roundsLeft = 5;
 
 	public CRDTAppSmallDelta(Host myself) throws HandlerRegistrationException, IOException {
@@ -104,8 +107,10 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		this.myself = myself;
 		myselfPeer = new Peer(myself.getAddress(), myself.getPort());
 		this.crdt = new DeltaORSet(new ReplicaID(myselfPeer));
-		// this.buffer = new DeltaORSet(new ReplicaID(myselfPeer));
 
+		this.stateLog = new PrintStream("state_log_" + myself.getAddress().toString().split("\\.")[3] + ".csv");
+		stateLog.println("timestamp_ms,full_state_size_bytes,avg_state_sent_bytes");
+		stateLog.flush();
 		this.localLog = new ArrayList<>();
 
 		createChannel();
@@ -363,22 +368,31 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 
 		int totalSize = calculateSize(this.crdt);
 		this.fullStateSize.set(totalSize);
+		stateLog.printf("%d,%d", System.currentTimeMillis(), totalSize);
 		for (Host neighbor : neighbors.keySet()) {
 			DeltaORSet buffer = neighbors.get(neighbor);
 			CRDTStateMessage msg = new CRDTStateMessage(buffer);
 
 			int sizeSent = calculateSize(buffer);
-			this.averageStateSizeSent.observe(sizeSent);
+			this.totalSentSize += sizeSent;
+			sentCount++;
 
 			if (sizeSent == 0) {
 				logger.info("Nothing to send");
 				continue;
 			}
-
+			
 			logger.info("Sending state of size {}, {}% of my total size", sizeSent, sizeSent * 100 / totalSize);
 			sendMessage(msg, CRDTAppSmallDelta.PROTO_ID, neighbor);
 		}
-
+		
+		long avgSent = (sentCount > 0) ? totalSentSize / sentCount : 0;
+		averageStateSizeSent.observe(avgSent);
+		stateLog.printf(",%d%n", avgSent);
+		stateLog.flush();
+		totalSentSize=0;
+		sentCount=0;
+		
 		// Clear the buffers
 		for (Host neighbor : neighbors.keySet()) {
 			neighbors.put(neighbor, new DeltaORSet(this.crdt.getReplicaState()));
@@ -432,6 +446,8 @@ public class CRDTAppSmallDelta extends GenericProtocol {
 		logger.info("Sending full state to {}.", h);
 		CRDTStateMessage msg = new CRDTStateMessage(this.crdt);
 		int sizeSent = calculateSize(this.crdt);
+		this.totalSentSize += sizeSent;
+		sentCount++;
 		this.averageStateSizeSent.observe(sizeSent);
 		sendMessage(msg, CRDTAppSmallDelta.PROTO_ID, h);
 	}

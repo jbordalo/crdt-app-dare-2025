@@ -23,6 +23,7 @@ import pt.unl.fct.di.novasys.network.data.Host;
 import tardis.app.CRDTApp;
 import tardis.app.CRDTAppBigDelta;
 import tardis.app.CRDTAppSmallDelta;
+import tardis.app.NoAggregation;
 
 public class Main {
 	// Sets the log4j (logging library) configuration file
@@ -99,6 +100,8 @@ public class Main {
 					CRDTApp.FULL_STATE_SIZE_METRIC));
 			mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
 					CRDTApp.STATE_SIZE_SENT_METRIC));
+			mon.addAggregation(new NoAggregation(CRDTApp.PROTO_ID, CRDTApp.STATE_SIZE_SENT_METRIC));
+			mon.addAggregation(new NoAggregation(CRDTApp.PROTO_ID, CRDTApp.FULL_STATE_SIZE_METRIC));
 			// mon.addAggregation(new DefaultAggregation(CRDTApp.PROTO_ID,
 					// CRDTApp.TIME_MERGING_METRIC));
 		}
