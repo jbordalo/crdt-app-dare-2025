@@ -2,17 +2,18 @@ import json
 import matplotlib.pyplot as plt
 import os
 
-# List your JSONL files here
 files = [
-    "results/storage_state.json",
-    "results/storage_small-delta.json",
-    "results/storage_big-delta.json"
+    "transitive/storage_state.json",
+    "transitive/storage_small-delta.json",
+    "transitive/storage_big-delta.json"
 ]
 
-fig, axes = plt.subplots(1, len(files), figsize=(10 * len(files), 5), sharey=True)
+SAVE = True
 
+# Combined figure
+fig, axes = plt.subplots(1, len(files), figsize=(12 * len(files), 8), sharey=True)
 if len(files) == 1:
-    axes = [axes]  # handle single plot case
+    axes = [axes]
 
 for ax, filename in zip(axes, files):
     avg_full, avg_sent, avg_merge = [], [], []
@@ -33,14 +34,15 @@ for ax, filename in zip(axes, files):
                     avg_merge.append(m["samples"][0]["value"])
 
     x = range(len(avg_full))
-    title = "" # os.path.basename(filename).replace(".json", "")
+    title = ""
     if "small-delta" in filename:
-        title = "δ-CRDT"
+        title = "δ-CRDT (transitive)"
     elif "big-delta" in filename:
         title = "Δ-CRDT"
     else:
         title = "State-based CRDT"
 
+    # Plot in combined figure
     ax.plot(x, avg_full, marker='o', label='Full State Size (kB)')
     ax.plot(x, avg_sent, marker='x', label='State Sent (kB)')
     ax.set_xlabel("Minutes")
@@ -49,6 +51,23 @@ for ax, filename in zip(axes, files):
     ax.grid(True)
     ax.legend()
 
-plt.suptitle("CRDT State Sizes Comparison", fontsize=14)
+    # Save individual subplot as separate figure
+    if SAVE:
+        fig_single, ax_single = plt.subplots(figsize=(10,5))
+        ax_single.plot(x, avg_full, marker='o', label='Full State Size (kB)')
+        ax_single.plot(x, avg_sent, marker='x', label='State Sent (kB)')
+        ax_single.set_xlabel("Minutes")
+        ax_single.set_ylabel("kB")
+        ax_single.set_title(title)
+        ax_single.grid(True)
+        ax_single.legend()
+        fig_single.tight_layout()
+        filename_out = filename.replace(".json", "_plot.png").split("/")[-1]
+        fig_single.savefig(filename_out)
+        plt.close(fig_single)  # close to free memory
+
+plt.suptitle("CRDT State Sizes Comparison (System grows 50%)", fontsize=14)
 plt.tight_layout()
+if SAVE:
+    plt.savefig("plot_normal_transitive.png")
 plt.show()

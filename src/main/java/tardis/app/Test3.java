@@ -62,7 +62,7 @@ public class Test3 {
         DeltaORSet crdt2 = new DeltaORSet(new ReplicaID(p2));
         DeltaORSet crdt3 = new DeltaORSet(new ReplicaID(p3));
 
-        System.out.println("=== Test3: Simple Delta Traffic ===");
+        System.out.println("=== Test3: Small Delta Traffic ===");
 
         crdt1.add(new StringType("A"));
         crdt1.add(new StringType("B"));

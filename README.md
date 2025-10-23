@@ -44,3 +44,6 @@ sudo ifconfig lo0 alias 127.0.0.2
 ```console
 sudo ip addr add 127.0.0.2/8 dev lo
 ```
+
+### Others
+You can look at the execution scripts, `run_contact.sh` and `run_node.sh` for more information.
