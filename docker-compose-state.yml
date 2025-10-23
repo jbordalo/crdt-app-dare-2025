@@ -1,7 +1,6 @@
 services:
   contact:
     image: crdt-app
-    #container_name: contact
     command: ["java", "-jar", "app.jar", "-conf", "contact.conf", "HyParView.contact=none", "babel.interface=eth0", "monitor=true", "app.type=state"]
     networks:
       - crdt_net

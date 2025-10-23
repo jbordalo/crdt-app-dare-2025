@@ -1,32 +1,51 @@
 #!/bin/bash
 
-N=$1
-WAIT=${2:-10}
+N=${1:-2}
+STACK="crdt-app"
+STABLE=120
+CHURN=120
 
-SERVICE="crdt-app_node"
+run_single_churn() {
+  local SERVICE="${STACK}_node"
+  local CURRENT
+  CURRENT=$(docker service inspect --format='{{.Spec.Mode.Replicated.Replicas}}' $SERVICE)
 
-if [ -z "$N" ]; then
-  echo "Usage: $0 N [WAIT]"
-  exit 1
-fi
+  echo "[CHURN] Scaling down $N replicas..."
+  docker service scale $SERVICE=$((CURRENT - N)) >/dev/null
+  sleep $((CHURN / 2))
 
-# current replicas
-CURRENT=$(docker service inspect --format='{{.Spec.Mode.Replicated.Replicas}}' $SERVICE)
+  echo "[CHURN] Scaling back up..."
+  docker service scale $SERVICE=$CURRENT >/dev/null
+  sleep $((CHURN / 2))
 
-if (( N >= CURRENT )); then
-  echo "[ERROR]: N ($N) must be smaller than current replicas ($CURRENT)"
-  exit 1
-fi
+  echo "[CHURN] Completed down-up cycle."
+}
 
-TARGET=$((CURRENT - N))
+run_experiment() {
+  local COMPOSE=$1
+  echo "=============================="
+  echo "[RUN] Deploying $COMPOSE"
+  echo "=============================="
+  docker stack deploy -c "$COMPOSE" $STACK
+  echo "[INFO] Waiting 30s for startup..."
+  sleep 30
 
-echo "[INFO] Scaling $SERVICE down from $CURRENT to $TARGET replicas."
-docker service scale $SERVICE=$TARGET
+  echo "[INFO] Stable phase 1 ($STABLE s)"
+  sleep $STABLE
 
-echo "[INFO] Waiting for $WAIT seconds."
-sleep $WAIT
+  run_single_churn
 
-echo "[INFO] Scaling $SERVICE back up to $CURRENT replicas."
-docker service scale $SERVICE=$CURRENT
+  echo "[INFO] Stable phase 2 ($STABLE s)"
+  sleep $STABLE
 
-echo "Done."
+  echo "[STOP] Removing stack $STACK"
+  docker stack rm $STACK
+  sleep 30
+}
+
+run_experiment docker-compose-state.yml
+run_experiment docker-compose-small-delta.yml
+run_experiment docker-compose-big-delta.yml
+
+echo "[ALL DONE]"
+

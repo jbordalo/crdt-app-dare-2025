@@ -1,6 +1,4 @@
 #!/bin/bash
-# run_all_15min.sh
-# Runs 3 docker-compose stacks sequentially for 15 minutes each.
 
 STACK="crdt-app"
 DURATION=$((15 * 60))  # 15 minutes
@@ -10,6 +8,7 @@ run_stack() {
   echo "=== Running $FILE for 15 minutes ==="
   docker stack deploy -c "$FILE.yml" $STACK
 
+  echo "Sleeping for $DURATION minutes"
   sleep $DURATION
 
   echo "=== Stopping $FILE ==="
